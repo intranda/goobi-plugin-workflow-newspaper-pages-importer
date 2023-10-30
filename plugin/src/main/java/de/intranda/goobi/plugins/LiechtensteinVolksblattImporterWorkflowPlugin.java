@@ -35,6 +35,10 @@ import ugh.dl.Fileformat;
 import ugh.dl.Metadata;
 import ugh.dl.Person;
 import ugh.dl.Prefs;
+import ugh.exceptions.IncompletePersonObjectException;
+import ugh.exceptions.MetadataTypeNotAllowedException;
+import ugh.exceptions.PreferencesException;
+import ugh.exceptions.TypeNotAllowedForParentException;
 import ugh.fileformats.mets.MetsMods;
 
 @PluginImplementation
@@ -151,40 +155,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                         // get the correct workflow to use
                         Process template = ProcessManager.getProcessByExactTitle(workflow);
 
-                        Prefs prefs = template.getRegelsatz().getPreferences();
-                        Fileformat fileformat = new MetsMods(prefs);
-                        DigitalDocument dd = new DigitalDocument();
-                        fileformat.setDigitalDocument(dd);
-
-                        // add the physical basics
-                        DocStruct physical = dd.createDocStruct(prefs.getDocStrctTypeByName("BoundBook"));
-                        dd.setPhysicalDocStruct(physical);
-                        Metadata mdForPath = new Metadata(prefs.getMetadataTypeByName("pathimagefiles"));
-                        mdForPath.setValue("file:///");
-                        physical.addMetadata(mdForPath);
-
-                        // add the logical basics
-                        DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(publicationType));
-                        dd.setLogicalDocStruct(logical);
-
-                        // create the metadata fields by reading the config (and get content from the content files of course)
-                        for (ImportSet importSet : importSets) {
-                            // treat persons different than regular metadata
-                            if (importSet.isPerson()) {
-                            	updateLog("Add person '" + importSet.getTarget() + "' with value '" + importSet.getSource() + "'");
-                                Person p = new Person(prefs.getMetadataTypeByName(importSet.getTarget()));
-                                String firstname = importSet.getSource().substring(0, importSet.getSource().indexOf(" "));
-                                String lastname = importSet.getSource().substring(importSet.getSource().indexOf(" "));
-                                p.setFirstname(firstname);
-                                p.setLastname(lastname);
-                                logical.addPerson(p);       
-                            } else {
-                            	updateLog("Add metadata '" + importSet.getTarget() + "' with value '" + importSet.getSource() + "'");
-                                Metadata mdTitle = new Metadata(prefs.getMetadataTypeByName(importSet.getTarget()));
-                                mdTitle.setValue(importSet.getSource());
-                                logical.addMetadata(mdTitle);
-                            }
-                        }
+                        // prepare the Fileformat based on the template
+                        Fileformat fileformat = prepareFileformatForNewProcess(template, processName);
 
                         // save the process
                         Process process = bhelp.createAndSaveNewProcess(template, processName, fileformat);
@@ -257,6 +229,55 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         return processName;
     }
+
+    private Fileformat prepareFileformatForNewProcess(Process template, String processName) {
+        Prefs prefs = template.getRegelsatz().getPreferences();
+
+        try {
+            Fileformat fileformat = new MetsMods(prefs);
+            DigitalDocument dd = new DigitalDocument();
+            fileformat.setDigitalDocument(dd);
+
+            // add the physical basics
+            DocStruct physical = dd.createDocStruct(prefs.getDocStrctTypeByName("BoundBook"));
+            dd.setPhysicalDocStruct(physical);
+            Metadata mdForPath = new Metadata(prefs.getMetadataTypeByName("pathimagefiles"));
+            mdForPath.setValue("file:///");
+            physical.addMetadata(mdForPath);
+
+            // add the logical basics
+            DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(publicationType));
+            dd.setLogicalDocStruct(logical);
+
+            // create the metadata fields by reading the config (and get content from the content files of course)
+            for (ImportSet importSet : importSets) {
+                // treat persons different than regular metadata
+                if (importSet.isPerson()) {
+                    updateLog("Add person '" + importSet.getTarget() + "' with value '" + importSet.getSource() + "'");
+                    Person p = new Person(prefs.getMetadataTypeByName(importSet.getTarget()));
+                    String firstname = importSet.getSource().substring(0, importSet.getSource().indexOf(" "));
+                    String lastname = importSet.getSource().substring(importSet.getSource().indexOf(" "));
+                    p.setFirstname(firstname);
+                    p.setLastname(lastname);
+                    logical.addPerson(p);
+                } else {
+                    updateLog("Add metadata '" + importSet.getTarget() + "' with value '" + importSet.getSource() + "'");
+                    Metadata mdTitle = new Metadata(prefs.getMetadataTypeByName(importSet.getTarget()));
+                    mdTitle.setValue(importSet.getSource());
+                    logical.addMetadata(mdTitle);
+                }
+            }
+
+            return fileformat;
+
+        } catch (PreferencesException | TypeNotAllowedForParentException | MetadataTypeNotAllowedException | IncompletePersonObjectException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+            return null;
+        }
+
+    }
+
 
     @Override
     public void setPushContext(PushContext pusher) {
