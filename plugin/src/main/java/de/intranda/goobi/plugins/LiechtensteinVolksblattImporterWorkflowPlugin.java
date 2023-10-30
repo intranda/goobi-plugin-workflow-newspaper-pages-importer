@@ -1,7 +1,8 @@
 package de.intranda.goobi.plugins;
 
 import java.io.File;
-import java.nio.file.Paths;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
@@ -22,7 +23,10 @@ import de.sub.goobi.helper.BeanHelper;
 import de.sub.goobi.helper.Helper;
 import de.sub.goobi.helper.ScriptThreadWithoutHibernate;
 import de.sub.goobi.helper.StorageProvider;
+import de.sub.goobi.helper.StorageProviderInterface;
 import de.sub.goobi.helper.enums.StepStatus;
+import de.sub.goobi.helper.exceptions.DAOException;
+import de.sub.goobi.helper.exceptions.SwapException;
 import de.sub.goobi.persistence.managers.ProcessManager;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -44,6 +48,8 @@ import ugh.fileformats.mets.MetsMods;
 @PluginImplementation
 @Log4j2
 public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowPlugin, IPushPlugin {
+
+    private static final StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
     @Getter
     private String title = "intranda_workflow_liechtenstein_volksblatt_importer";
@@ -157,31 +163,27 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
                         // prepare the Fileformat based on the template
                         Fileformat fileformat = prepareFileformatForNewProcess(template, processName);
+                        if (fileformat == null) {
+                            // TODO: error happened during the preparation
+                        }
 
                         // save the process
-                        Process process = bhelp.createAndSaveNewProcess(template, processName, fileformat);
-
-                        // add some properties
-                        bhelp.EigenschaftHinzufuegen(process, "Template", template.getTitel());
-                        bhelp.EigenschaftHinzufuegen(process, "TemplateID", "" + template.getId());
-                        ProcessManager.saveProcess(process);
-                        
-                        // if media files are given, import these into the media folder of the process
-                        updateLog("Start copying media files");
-                        String targetBase = process.getImagesOrigDirectory(false);
-                        File pdf = new File(importFolder, "file.pdf");
-                        if (pdf.canRead()) {
-                            StorageProvider.getInstance().createDirectories(Paths.get(targetBase));
-                            StorageProvider.getInstance().copyFile(Paths.get(pdf.getAbsolutePath()), Paths.get(targetBase, "file.pdf"));
+                        Process process = createAndSaveNewProcess(bhelp, template, processName, fileformat);
+                        if (process == null) {
+                            // TODO: error heppened while saving
                         }
 
-                        // start any open automatic tasks for the created process
-                        for (Step s : process.getSchritteList()) {
-                            if (s.getBearbeitungsstatusEnum().equals(StepStatus.OPEN) && s.isTypAutomatisch()) {
-                                ScriptThreadWithoutHibernate myThread = new ScriptThreadWithoutHibernate(s);
-                                myThread.startOrPutToQueue();
-                            }
+                        // copy files into the media folder of the process
+                        try {
+                            copyMediaFiles(process);
+                        } catch (IOException | SwapException | DAOException e) {
+                            String message = "Error while trying to copy files into the media folder: " + e.getMessage();
+                            reportError(message);
                         }
+
+                        // start open automatic tasks
+                        startOpenAutomaticTasks(process);
+
                         updateLog("Process successfully created with ID: " + process.getId());
 
                     } catch (Exception e) {
@@ -271,13 +273,86 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             return fileformat;
 
         } catch (PreferencesException | TypeNotAllowedForParentException | MetadataTypeNotAllowedException | IncompletePersonObjectException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            String message = "Error while preparing the Fileformat for the new process: " + e.getMessage();
+            reportError(message);
             return null;
         }
 
     }
 
+    private Process createAndSaveNewProcess(BeanHelper bhelp, Process template, String processName, Fileformat fileformat) {
+        // save the process
+        Process process = bhelp.createAndSaveNewProcess(template, processName, fileformat);
+
+        // add some properties
+        bhelp.EigenschaftHinzufuegen(process, "Template", template.getTitel());
+        bhelp.EigenschaftHinzufuegen(process, "TemplateID", "" + template.getId());
+
+        try {
+            ProcessManager.saveProcess(process);
+        } catch (DAOException e) {
+            String message = "Error while trying to save the process: " + e.getMessage();
+            reportError(message);
+            return null;
+        }
+
+        return process;
+    }
+
+    /**
+     * copy the images from importFolder to media folders of the process
+     * 
+     * @param process Process whose media folder is targeted
+     * @throws IOException
+     * @throws SwapException
+     * @throws DAOException
+     */
+    private void copyMediaFiles(Process process) throws IOException, SwapException, DAOException {
+        // if media files are given, import these into the media folder of the process
+        updateLog("Start copying media files");
+        // prepare the directories
+        String mediaBase = process.getImagesTifDirectory(false);
+        storageProvider.createDirectories(Path.of(mediaBase));
+        String targetFolder = Path.of(importFolder, process.getTitel()).toString();
+        List<Path> filesToImport = storageProvider.listFiles(targetFolder);
+        for (Path path : filesToImport) {
+            File file = path.toFile();
+            if (file.canRead()) {
+                String fileName = path.getFileName().toString();
+                log.debug("fileName = " + fileName);
+                Path targetPath = Path.of(mediaBase, fileName);
+                storageProvider.move(path, targetPath);
+            }
+        }
+        storageProvider.deleteDir(Path.of(targetFolder));
+    }
+
+    /**
+     * start all automatic tasks that are open
+     * 
+     * @param process
+     */
+    private void startOpenAutomaticTasks(Process process) {
+        // start any open automatic tasks for the created process
+        for (Step s : process.getSchritteList()) {
+            if (s.getBearbeitungsstatusEnum().equals(StepStatus.OPEN) && s.isTypAutomatisch()) {
+                ScriptThreadWithoutHibernate myThread = new ScriptThreadWithoutHibernate(s);
+                myThread.startOrPutToQueue();
+            }
+        }
+    }
+
+    /**
+     * report error
+     * 
+     * @param message error message
+     */
+    private void reportError(String message) {
+        log.error(message);
+        updateLog(message, 3);
+        Helper.setFehlerMeldung(message);
+        pusher.send("error");
+    }
 
     @Override
     public void setPushContext(PushContext pusher) {
