@@ -52,6 +52,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     private static final StorageProviderInterface storageProvider = StorageProvider.getInstance();
     private static final Pattern YEAR_PATTERN = Pattern.compile("2\\d{3}");
+    private static final Pattern DATE_PATTERN = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
     private static final String YEAR_PATTERN_STRING = "2\\d{3}";
 
     @Getter
@@ -130,7 +131,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     /**
      * main method to start the actual import
      * 
-     * @param importConfiguration
+     * @param importset
      */
     public void startImport(ImportSet importset) {
     	updateLog("Start import for: " + importset.getTitle());
@@ -159,12 +160,19 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                         break;
                     }
 
-                    String processName = createProcessName(pdfFile.getFileName().toString());
+                    String fileName = pdfFile.getFileName().toString();
+
+                    String fileDate = getDateFromFileName(fileName);
+                    log.debug("fileDate = " + fileDate);
+
+                    // TODO: check blankness of fileDate
+
+                    String processName = createProcessName(fileDate);
                     updateLog("Start importing: " + processName, 1);
 
                     // TODO: process pdfFile
 
-                    boolean success = addPdfFileToProcess(bhelp, processName);
+                    boolean success = addPdfFileToProcess(bhelp, processName, pdfFile);
                     if (!success) {
                         String message = "Error while creating a process during the import";
                         reportError(message);
@@ -190,27 +198,33 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         new Thread(runnable).start();
     }
 
+    private String getDateFromFileName(String fileName) {
+        Matcher matcher = DATE_PATTERN.matcher(fileName);
+        return matcher.find() ? matcher.group() : "";
+    }
+
     /**
      * create the title for the new process
      * 
+     * @param dateString
      * @return new process title
      */
-    private String createProcessName(String fileName) {
-        log.debug("creating process name for: " + fileName);
+    private String createProcessName(String dateString) {
+        log.debug("creating process name for: " + dateString);
         log.debug(YEAR_PATTERN.toString());
         // create a process name using the year encoded in the fileName
-        Matcher matcher = YEAR_PATTERN.matcher(fileName);
+        Matcher matcher = YEAR_PATTERN.matcher(dateString);
 
         return matcher.find() ? matcher.group() : "";
     }
 
-    private boolean addPdfFileToProcess(BeanHelper bhelp, String processName) {
+    private boolean addPdfFileToProcess(BeanHelper bhelp, String processName, Path pdfFilePath) {
         // check existence of process
         Process existingProcess = getProcessByName(processName);
         //        boolean processExists = checkExistenceOfProcess(processName);
         boolean processExists = existingProcess != null;
 
-        return processExists ? tryUpdateOldProcess(existingProcess) : tryCreateAndSaveNewProcess(bhelp, processName);
+        return processExists ? tryUpdateOldProcess(existingProcess, pdfFilePath) : tryCreateAndSaveNewProcess(bhelp, processName, pdfFilePath);
     }
 
     //    private boolean checkExistenceOfProcess(String processName) {
@@ -224,8 +238,18 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return ProcessManager.getProcessByTitle(processName);
     }
 
-    private boolean tryUpdateOldProcess(Process existingProcess) {
-        log.debug("Updating process: " + existingProcess.getTitel());
+    private boolean tryUpdateOldProcess(Process process, Path pdfFilePath) {
+        log.debug("Updating process: " + process.getTitel());
+        // TODO: metadata
+
+        // copy files into the media folder of the process
+        try {
+            copyMediaFile(process, pdfFilePath);
+        } catch (IOException | SwapException | DAOException e) {
+            String message = "Error while trying to copy files into the media folder: " + e.getMessage();
+            reportError(message);
+            return false;
+        }
 
         return true;
     }
@@ -237,7 +261,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @param processName title of the new process
      * @return true if a new process is successfully created and saved, otherwise false
      */
-    private boolean tryCreateAndSaveNewProcess(BeanHelper bhelp, String processName) {
+    private boolean tryCreateAndSaveNewProcess(BeanHelper bhelp, String processName, Path pdfFilePath) {
         // get the correct workflow to use
         Process template = ProcessManager.getProcessByExactTitle(workflow);
         // prepare the Fileformat based on the template Process
@@ -256,7 +280,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         // copy files into the media folder of the process
         try {
-            copyMediaFiles(process);
+            copyMediaFile(process, pdfFilePath);
         } catch (IOException | SwapException | DAOException e) {
             String message = "Error while trying to copy files into the media folder: " + e.getMessage();
             reportError(message);
@@ -400,24 +424,20 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @throws SwapException
      * @throws DAOException
      */
-    private void copyMediaFiles(Process process) throws IOException, SwapException, DAOException {
+    private void copyMediaFile(Process process, Path pdfFilePath) throws IOException, SwapException, DAOException {
         // if media files are given, import these into the media folder of the process
         updateLog("Start copying media files");
         // prepare the directories
         String mediaBase = process.getImagesTifDirectory(false);
         storageProvider.createDirectories(Path.of(mediaBase));
-        String targetFolder = Path.of(importFolder, process.getTitel()).toString();
-        List<Path> filesToImport = storageProvider.listFiles(targetFolder);
-        for (Path path : filesToImport) {
-            File file = path.toFile();
-            if (file.canRead()) {
-                String fileName = path.getFileName().toString();
-                log.debug("fileName = " + fileName);
-                Path targetPath = Path.of(mediaBase, fileName);
-                storageProvider.move(path, targetPath);
-            }
+        File file = pdfFilePath.toFile();
+        if (file.canRead()) {
+            String fileName = pdfFilePath.getFileName().toString();
+            log.debug("fileName = " + fileName);
+            Path targetPath = Path.of(mediaBase, fileName);
+            //            storageProvider.move(pdfFilePath, targetPath);
+            storageProvider.copyFile(pdfFilePath, targetPath); // for the ease of testing
         }
-        storageProvider.deleteDir(Path.of(targetFolder));
     }
 
     /**
