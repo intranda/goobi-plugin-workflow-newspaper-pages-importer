@@ -37,6 +37,7 @@ import ugh.dl.DigitalDocument;
 import ugh.dl.DocStruct;
 import ugh.dl.Fileformat;
 import ugh.dl.Metadata;
+import ugh.dl.MetadataType;
 import ugh.dl.Person;
 import ugh.dl.Prefs;
 import ugh.exceptions.IncompletePersonObjectException;
@@ -246,6 +247,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return true;
     }
 
+    /**
+     * prepare the Fileformat for creating the new process
+     * 
+     * @param template Process template
+     * @param processName title of the new process
+     * @return Fileformat
+     */
     private Fileformat prepareFileformatForNewProcess(Process template, String processName) {
         Prefs prefs = template.getRegelsatz().getPreferences();
 
@@ -266,23 +274,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             dd.setLogicalDocStruct(logical);
 
             // create the metadata fields by reading the config (and get content from the content files of course)
-            for (ImportSet importSet : importSets) {
-                // treat persons different than regular metadata
-                if (importSet.isPerson()) {
-                    updateLog("Add person '" + importSet.getTarget() + "' with value '" + importSet.getSource() + "'");
-                    Person p = new Person(prefs.getMetadataTypeByName(importSet.getTarget()));
-                    String firstname = importSet.getSource().substring(0, importSet.getSource().indexOf(" "));
-                    String lastname = importSet.getSource().substring(importSet.getSource().indexOf(" "));
-                    p.setFirstname(firstname);
-                    p.setLastname(lastname);
-                    logical.addPerson(p);
-                } else {
-                    updateLog("Add metadata '" + importSet.getTarget() + "' with value '" + importSet.getSource() + "'");
-                    Metadata mdTitle = new Metadata(prefs.getMetadataTypeByName(importSet.getTarget()));
-                    mdTitle.setValue(importSet.getSource());
-                    logical.addMetadata(mdTitle);
-                }
-            }
+            createMetadataFields(prefs, logical, importSets);
 
             return fileformat;
 
@@ -292,6 +284,69 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             return null;
         }
 
+    }
+
+    /**
+     * create all metadata fields
+     * 
+     * @param prefs Prefs
+     * @param ds DocStruct
+     * @param importSets list of ImportMetadata
+     */
+    private void createMetadataFields(Prefs prefs, DocStruct ds, List<ImportSet> importSets) {
+        for (ImportSet importSet : importSets) {
+            // prepare the MetadataType
+            String target = importSet.getTarget();
+            MetadataType targetType = prefs.getMetadataTypeByName(target);
+            String value = importSet.getSource();
+            log.debug("targetType = " + targetType);
+
+            boolean isPerson = importSet.isPerson();
+
+            try {
+                Metadata md = createMetadata(targetType, value, isPerson);
+                if (isPerson) {
+                    updateLog("Add person '" + target + "' with value '" + value + "'");
+                    ds.addPerson((Person) md);
+                } else {
+                    updateLog("Add metadata '" + target + "' with value '" + value + "'");
+                    log.debug("ds.type = " + ds.getType());
+                    ds.addMetadata(md);
+                }
+            } catch (MetadataTypeNotAllowedException e) {
+                String message = "MetadataType " + target + " is not allowed. Skipping...";
+                reportError(message);
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * create Metadata
+     * 
+     * @param targetType MetadataType
+     * @param value value of the new Metadata
+     * @param isPerson
+     * @return the new Metadata object created
+     * @throws MetadataTypeNotAllowedException
+     */
+    private Metadata createMetadata(MetadataType targetType, String value, boolean isPerson) throws MetadataTypeNotAllowedException {
+        // treat persons different than regular metadata
+        if (isPerson) {
+            Person p = new Person(targetType);
+            int splitIndex = value.indexOf(" ");
+            String firstName = value.substring(0, splitIndex);
+            String lastName = value.substring(splitIndex);
+            p.setFirstname(firstName);
+            p.setLastname(lastName);
+
+            return p;
+        }
+
+        Metadata md = new Metadata(targetType);
+        md.setValue(value);
+
+        return md;
     }
 
     private Process createAndSaveNewProcess(BeanHelper bhelp, Process template, String processName, Fileformat fileformat) {
