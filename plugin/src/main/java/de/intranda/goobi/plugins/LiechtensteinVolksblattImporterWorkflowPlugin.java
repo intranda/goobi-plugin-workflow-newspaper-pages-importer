@@ -6,7 +6,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
-import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.commons.collections4.queue.CircularFifoQueue;
 import org.apache.commons.configuration.HierarchicalConfiguration;
@@ -18,7 +19,6 @@ import org.goobi.production.plugin.interfaces.IWorkflowPlugin;
 import org.omnifaces.cdi.PushContext;
 
 import de.sub.goobi.config.ConfigPlugins;
-import de.sub.goobi.config.ConfigurationHelper;
 import de.sub.goobi.helper.BeanHelper;
 import de.sub.goobi.helper.Helper;
 import de.sub.goobi.helper.ScriptThreadWithoutHibernate;
@@ -51,6 +51,8 @@ import ugh.fileformats.mets.MetsMods;
 public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowPlugin, IPushPlugin {
 
     private static final StorageProviderInterface storageProvider = StorageProvider.getInstance();
+    private static final Pattern YEAR_PATTERN = Pattern.compile("2\\d{3}");
+    private static final String YEAR_PATTERN_STRING = "2\\d{3}";
 
     @Getter
     private String title = "intranda_workflow_liechtenstein_volksblatt_importer";
@@ -143,22 +145,26 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             try {
             	updateLog("Run through all import files");
                 int start = 0;
-                int end = 5;
+
+                List<Path> pdfFiles = storageProvider.listFiles(importFolder);
+                int end = pdfFiles.size();
+
                 itemsTotal = end - start;
                 itemCurrent = start;
                 
                 // run through import files (e.g. from importFolder)
-                for (int i = start; i < end; i++) {
+                for (Path pdfFile : pdfFiles) {
                     Thread.sleep(100);
                     if (!run) {
                         break;
                     }
 
-                    String processName = createProcessName();
+                    String processName = createProcessName(pdfFile.getFileName().toString());
                     updateLog("Start importing: " + processName, 1);
 
-                    // create and save the process
-                    boolean success = tryCreateAndSaveNewProcess(bhelp, processName);
+                    // TODO: process pdfFile
+
+                    boolean success = addPdfFileToProcess(bhelp, processName);
                     if (!success) {
                         String message = "Error while creating a process during the import";
                         reportError(message);
@@ -189,21 +195,39 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * 
      * @return new process title
      */
-    private String createProcessName() {
-        // create a process name via UUID
-        String processName = UUID.randomUUID().toString();
-        String regex = ConfigurationHelper.getInstance().getProcessTitleReplacementRegex();
-        processName = processName.replaceAll(regex, "_").trim();
+    private String createProcessName(String fileName) {
+        log.debug("creating process name for: " + fileName);
+        log.debug(YEAR_PATTERN.toString());
+        // create a process name using the year encoded in the fileName
+        Matcher matcher = YEAR_PATTERN.matcher(fileName);
 
-        // assure the uniqueness of the process name
-        int tempCounter = 1;
-        String tempName = processName;
-        while (ProcessManager.countProcessTitle(processName, null) > 0) {
-            processName = tempName + "_" + tempCounter;
-            ++tempCounter;
-        }
+        return matcher.find() ? matcher.group() : "";
+    }
 
-        return processName;
+    private boolean addPdfFileToProcess(BeanHelper bhelp, String processName) {
+        // check existence of process
+        Process existingProcess = getProcessByName(processName);
+        //        boolean processExists = checkExistenceOfProcess(processName);
+        boolean processExists = existingProcess != null;
+
+        return processExists ? tryUpdateOldProcess(existingProcess) : tryCreateAndSaveNewProcess(bhelp, processName);
+    }
+
+    //    private boolean checkExistenceOfProcess(String processName) {
+    //        log.debug("Counting number of processes for " + processName);
+    //        return ProcessManager.getNumberOfProcessesWithTitle(processName) != 0;
+    //    }
+
+    private Process getProcessByName(String processName) {
+        log.debug("Trying to retrieve the process if it exists.");
+        // null will be returned if no such process exists
+        return ProcessManager.getProcessByTitle(processName);
+    }
+
+    private boolean tryUpdateOldProcess(Process existingProcess) {
+        log.debug("Updating process: " + existingProcess.getTitel());
+
+        return true;
     }
 
     /**
