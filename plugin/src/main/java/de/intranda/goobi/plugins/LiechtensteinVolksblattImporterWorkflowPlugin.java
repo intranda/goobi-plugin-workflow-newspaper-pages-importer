@@ -154,43 +154,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                     }
 
                     String processName = createProcessName();
-
                     updateLog("Start importing: " + processName, 1);
 
-                    try {
-                        // get the correct workflow to use
-                        Process template = ProcessManager.getProcessByExactTitle(workflow);
-
-                        // prepare the Fileformat based on the template
-                        Fileformat fileformat = prepareFileformatForNewProcess(template, processName);
-                        if (fileformat == null) {
-                            // TODO: error happened during the preparation
-                        }
-
-                        // save the process
-                        Process process = createAndSaveNewProcess(bhelp, template, processName, fileformat);
-                        if (process == null) {
-                            // TODO: error heppened while saving
-                        }
-
-                        // copy files into the media folder of the process
-                        try {
-                            copyMediaFiles(process);
-                        } catch (IOException | SwapException | DAOException e) {
-                            String message = "Error while trying to copy files into the media folder: " + e.getMessage();
-                            reportError(message);
-                        }
-
-                        // start open automatic tasks
-                        startOpenAutomaticTasks(process);
-
-                        updateLog("Process successfully created with ID: " + process.getId());
-
-                    } catch (Exception e) {
-                        log.error("Error while creating a process during the import", e);
-                        updateLog("Error while creating a process during the import: " + e.getMessage(), 3);
-                        Helper.setFehlerMeldung("Error while creating a process during the import: " + e.getMessage());
-                        pusher.send("error");
+                    // create and save the process
+                    boolean success = tryCreateAndSaveNewProcess(bhelp, processName);
+                    if (!success) {
+                        String message = "Error while creating a process during the import";
+                        reportError(message);
                     }
 
                     // recalculate progress
@@ -230,6 +200,47 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         }
 
         return processName;
+    }
+
+    /**
+     * try to create and save a new process
+     * 
+     * @param bhelp BeanHelper
+     * @param processName title of the new process
+     * @return true if a new process is successfully created and saved, otherwise false
+     */
+    private boolean tryCreateAndSaveNewProcess(BeanHelper bhelp, String processName) {
+        // get the correct workflow to use
+        Process template = ProcessManager.getProcessByExactTitle(workflow);
+        // prepare the Fileformat based on the template Process
+        Fileformat fileformat = prepareFileformatForNewProcess(template, processName);
+        if (fileformat == null) {
+            // error happened during the preparation
+            return false;
+        }
+
+        // save the process
+        Process process = createAndSaveNewProcess(bhelp, template, processName, fileformat);
+        if (process == null) {
+            // error heppened while saving
+            return false;
+        }
+
+        // copy files into the media folder of the process
+        try {
+            copyMediaFiles(process);
+        } catch (IOException | SwapException | DAOException e) {
+            String message = "Error while trying to copy files into the media folder: " + e.getMessage();
+            reportError(message);
+            return false;
+        }
+
+        // start open automatic tasks
+        startOpenAutomaticTasks(process);
+
+        updateLog("Process successfully created with ID: " + process.getId());
+
+        return true;
     }
 
     private Fileformat prepareFileformatForNewProcess(Process template, String processName) {
