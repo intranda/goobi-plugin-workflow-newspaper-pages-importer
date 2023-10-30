@@ -132,7 +132,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             try {
             	updateLog("Run through all import files");
                 int start = 0;
-                int end = 20;
+                int end = 5;
                 itemsTotal = end - start;
                 itemCurrent = start;
                 
@@ -143,25 +143,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                         break;
                     }
 
-                    // create a process name (here as UUID) and make sure it does not exist yet
-                    String processname = UUID.randomUUID().toString();  
-                    String regex = ConfigurationHelper.getInstance().getProcessTitleReplacementRegex();
-                    processname = processname.replaceAll(regex, "_").trim();   
-                    
-                    if (ProcessManager.countProcessTitle(processname, null) > 0) {
-                        int tempCounter = 1;
-                        String tempName = processname + "_" + tempCounter;
-                        while(ProcessManager.countProcessTitle(tempName, null) > 0) {
-                            tempCounter++;
-                            tempName = processname + "_" + tempCounter;
-                        }
-                        processname = tempName;
-                    }
-                	updateLog("Start importing: " + processname, 1);
+                    String processName = createProcessName();
+
+                    updateLog("Start importing: " + processName, 1);
 
                     try {
                         // get the correct workflow to use
                         Process template = ProcessManager.getProcessByExactTitle(workflow);
+
                         Prefs prefs = template.getRegelsatz().getPreferences();
                         Fileformat fileformat = new MetsMods(prefs);
                         DigitalDocument dd = new DigitalDocument();
@@ -198,7 +187,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                         }
 
                         // save the process
-                        Process process = bhelp.createAndSaveNewProcess(template, processname, fileformat);
+                        Process process = bhelp.createAndSaveNewProcess(template, processName, fileformat);
 
                         // add some properties
                         bhelp.EigenschaftHinzufuegen(process, "Template", template.getTitel());
@@ -248,6 +237,25 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         };
         new Thread(runnable).start();
+    }
+
+    private String createProcessName() {
+        // create a process name (here as UUID) and make sure it does not exist yet
+        String processName = UUID.randomUUID().toString();
+        String regex = ConfigurationHelper.getInstance().getProcessTitleReplacementRegex();
+        processName = processName.replaceAll(regex, "_").trim();
+
+        if (ProcessManager.countProcessTitle(processName, null) > 0) {
+            int tempCounter = 1;
+            String tempName = processName + "_" + tempCounter;
+            while (ProcessManager.countProcessTitle(tempName, null) > 0) {
+                tempCounter++;
+                tempName = processName + "_" + tempCounter;
+            }
+            processName = tempName;
+        }
+
+        return processName;
     }
 
     @Override
