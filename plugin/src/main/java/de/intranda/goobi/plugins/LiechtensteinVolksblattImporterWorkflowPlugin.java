@@ -183,20 +183,23 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         new Thread(runnable).start();
     }
 
+    /**
+     * create the title for the new process
+     * 
+     * @return new process title
+     */
     private String createProcessName() {
-        // create a process name (here as UUID) and make sure it does not exist yet
+        // create a process name via UUID
         String processName = UUID.randomUUID().toString();
         String regex = ConfigurationHelper.getInstance().getProcessTitleReplacementRegex();
         processName = processName.replaceAll(regex, "_").trim();
 
-        if (ProcessManager.countProcessTitle(processName, null) > 0) {
-            int tempCounter = 1;
-            String tempName = processName + "_" + tempCounter;
-            while (ProcessManager.countProcessTitle(tempName, null) > 0) {
-                tempCounter++;
-                tempName = processName + "_" + tempCounter;
-            }
-            processName = tempName;
+        // assure the uniqueness of the process name
+        int tempCounter = 1;
+        String tempName = processName;
+        while (ProcessManager.countProcessTitle(processName, null) > 0) {
+            processName = tempName + "_" + tempCounter;
+            ++tempCounter;
         }
 
         return processName;
