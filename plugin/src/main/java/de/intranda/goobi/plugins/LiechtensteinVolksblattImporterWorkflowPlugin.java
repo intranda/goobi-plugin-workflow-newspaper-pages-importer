@@ -18,6 +18,7 @@ import org.goobi.production.plugin.interfaces.IPushPlugin;
 import org.goobi.production.plugin.interfaces.IWorkflowPlugin;
 import org.omnifaces.cdi.PushContext;
 
+import de.intranda.goobi.plugins.model.NewspaperPage;
 import de.sub.goobi.config.ConfigPlugins;
 import de.sub.goobi.helper.BeanHelper;
 import de.sub.goobi.helper.Helper;
@@ -43,6 +44,8 @@ import ugh.dl.Prefs;
 import ugh.exceptions.IncompletePersonObjectException;
 import ugh.exceptions.MetadataTypeNotAllowedException;
 import ugh.exceptions.PreferencesException;
+import ugh.exceptions.ReadException;
+import ugh.exceptions.TypeNotAllowedAsChildException;
 import ugh.exceptions.TypeNotAllowedForParentException;
 import ugh.fileformats.mets.MetsMods;
 
@@ -53,7 +56,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private static final StorageProviderInterface storageProvider = StorageProvider.getInstance();
     private static final Pattern YEAR_PATTERN = Pattern.compile("2\\d{3}");
     private static final Pattern DATE_PATTERN = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
-    private static final String YEAR_PATTERN_STRING = "2\\d{3}";
+
+    //    private static final String YEAR_PATTERN_STRING = "2\\d{3}";
 
     @Getter
     private String title = "intranda_workflow_liechtenstein_volksblatt_importer";
@@ -160,19 +164,22 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                         break;
                     }
 
-                    String fileName = pdfFile.getFileName().toString();
+                    //                    String fileName = pdfFile.getFileName().toString();
+                    //                    NewspaperPage page = new NewspaperPage(fileName);
 
-                    String fileDate = getDateFromFileName(fileName);
-                    log.debug("fileDate = " + fileDate);
+                    //                    String fileDate = getDateFromFileName(fileName);
+                    //                    log.debug("fileDate = " + fileDate);
 
                     // TODO: check blankness of fileDate
 
-                    String processName = createProcessName(fileDate);
-                    updateLog("Start importing: " + processName, 1);
+                    //                    String processName = createProcessName(fileDate);
+                    //                    updateLog("Start importing: " + processName, 1);
 
                     // TODO: process pdfFile
 
-                    boolean success = addPdfFileToProcess(bhelp, processName, pdfFile);
+                    //                    boolean success = addPdfFileToProcess(bhelp, processName, pdfFile);
+                    //                    boolean success = addPdfFileToProcess(bhelp, fileDate, pdfFile);
+                    boolean success = addPdfFileToProcess(bhelp, pdfFile);
                     if (!success) {
                         String message = "Error while creating a process during the import";
                         reportError(message);
@@ -218,14 +225,32 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return matcher.find() ? matcher.group() : "";
     }
 
-    private boolean addPdfFileToProcess(BeanHelper bhelp, String processName, Path pdfFilePath) {
-        // check existence of process
+    private boolean addPdfFileToProcess(BeanHelper bhelp, Path pdfFilePath) {
+        //        String fileName = pdfFilePath.getFileName().toString();
+        NewspaperPage page = new NewspaperPage(pdfFilePath);
+        
+        String processName = page.getYear();
+        updateLog("Start importing: " + processName, 1);
+
+        // check existen of process
         Process existingProcess = getProcessByName(processName);
-        //        boolean processExists = checkExistenceOfProcess(processName);
         boolean processExists = existingProcess != null;
 
-        return processExists ? tryUpdateOldProcess(existingProcess, pdfFilePath) : tryCreateAndSaveNewProcess(bhelp, processName, pdfFilePath);
+        return processExists ? tryUpdateOldProcess(existingProcess, page) : tryCreateAndSaveNewProcess(bhelp, processName, page);
     }
+
+    //    private boolean addPdfFileToProcess(BeanHelper bhelp, String fileDate, Path pdfFilePath) {
+    //        // prepare process name
+    //        String processName = createProcessName(fileDate);
+    //        updateLog("Start importing: " + processName, 1);
+    //
+    //        // check existence of process
+    //        Process existingProcess = getProcessByName(processName);
+    //        //        boolean processExists = checkExistenceOfProcess(processName);
+    //        boolean processExists = existingProcess != null;
+    //
+    //        return processExists ? tryUpdateOldProcess(existingProcess, pdfFilePath) : tryCreateAndSaveNewProcess(bhelp, processName, pdfFilePath);
+    //    }
 
     //    private boolean checkExistenceOfProcess(String processName) {
     //        log.debug("Counting number of processes for " + processName);
@@ -238,9 +263,26 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return ProcessManager.getProcessByTitle(processName);
     }
 
-    private boolean tryUpdateOldProcess(Process process, Path pdfFilePath) {
+    private boolean tryUpdateOldProcess(Process process, NewspaperPage page) {
         log.debug("Updating process: " + process.getTitel());
+        Path pdfFilePath = page.getFilePath();
         // TODO: metadata
+        try {
+            updateMetadataOfProcess(process);
+        } catch (ReadException | IOException | SwapException e1) {
+            // TODO Auto-generated catch block
+            // read Fileformat
+            e1.printStackTrace();
+
+        } catch (PreferencesException e) {
+            // TODO Auto-generated catch block
+            // DigitalDocument
+            e.printStackTrace();
+
+        } catch (Exception e) {
+            log.debug("Unknown exception caught while updating process: " + process.getTitel());
+            e.printStackTrace();
+        }
 
         // copy files into the media folder of the process
         try {
@@ -254,6 +296,28 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return true;
     }
 
+    private void updateMetadataOfProcess(Process process) throws ReadException, IOException, SwapException, PreferencesException {
+        log.debug("updating metadata of process: " + process.getTitel());
+        try {
+            Prefs prefs = process.getRegelsatz().getPreferences();
+            // read metadata
+            Fileformat fileformat = process.readMetadataFile(); // ERROR: The process {} cannot be loaded as there is no format -.:
+
+            log.debug("fileformat is " + (fileformat == null ? "" : "NOT") + " null");
+
+            // update metadata
+            //        DigitalDocument dd = fileformat.getDigitalDocument();
+            //        DocStruct logical = dd.getLogicalDocStruct();
+            //        DocStruct volume = logical.getAllChildren().get(0);
+
+            // write changes into file
+        } catch (Exception e) {
+            log.debug("Exception caught while updating metadata of process: " + process.getTitel());
+            e.printStackTrace();
+        }
+
+    }
+
     /**
      * try to create and save a new process
      * 
@@ -261,7 +325,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @param processName title of the new process
      * @return true if a new process is successfully created and saved, otherwise false
      */
-    private boolean tryCreateAndSaveNewProcess(BeanHelper bhelp, String processName, Path pdfFilePath) {
+    private boolean tryCreateAndSaveNewProcess(BeanHelper bhelp, String processName, NewspaperPage page) {
         // get the correct workflow to use
         Process template = ProcessManager.getProcessByExactTitle(workflow);
         // prepare the Fileformat based on the template Process
@@ -270,6 +334,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // error happened during the preparation
             return false;
         }
+
+        // create and add new issue
 
         // save the process
         Process process = createAndSaveNewProcess(bhelp, template, processName, fileformat);
@@ -280,12 +346,20 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         // copy files into the media folder of the process
         try {
-            copyMediaFile(process, pdfFilePath);
+            copyMediaFile(process, page.getFilePath());
         } catch (IOException | SwapException | DAOException e) {
             String message = "Error while trying to copy files into the media folder: " + e.getMessage();
             reportError(message);
             return false;
         }
+
+        //        try {
+        //            process.writeMetadataFile(fileformat);
+        //        } catch (WriteException | PreferencesException | IOException | SwapException e) {
+        //            // TODO Auto-generated catch block
+        //            e.printStackTrace();
+        //            return false;
+        //        }
 
         // start open automatic tasks
         startOpenAutomaticTasks(process);
@@ -318,8 +392,45 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             physical.addMetadata(mdForPath);
 
             // add the logical basics
-            DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(publicationType));
+            DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(publicationType)); // publicationType is Newspaper
+            String identifier = processName + "_newspaper";
+            logical.setIdentifier(identifier);
             dd.setLogicalDocStruct(logical);
+
+            // create new issue and add it 
+            String childTypeName = "NewspaperVolume";
+            DocStruct volume = dd.createDocStruct(prefs.getDocStrctTypeByName(childTypeName));
+
+            volume.addReferenceTo(logical, "logical_physical");
+            //            volume.setReferenceToAnchor(logical.getIdentifier());
+            log.debug("adding DocStruct child: " + childTypeName);
+            try {
+                logical.addChild(volume);
+                log.debug("logical has identifier = " + logical.getIdentifier());
+                //                volume.setReferenceToAnchor(logical.getIdentifier());
+
+            } catch (TypeNotAllowedAsChildException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+                return null;
+            }
+
+            //            logical.addChild(new DocStruct());
+            DocStruct issue = createNewIssue(prefs, dd);
+            if (issue == null) {
+                // TODO: error happened
+                return null;
+            }
+
+            try {
+                volume.addChild(issue);
+
+            } catch (TypeNotAllowedAsChildException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+                return null;
+            }
+
 
             // create the metadata fields by reading the config (and get content from the content files of course)
             createMetadataFields(prefs, logical, importSets);
@@ -397,6 +508,32 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return md;
     }
 
+    private DocStruct createNewIssue(Prefs prefs, DigitalDocument dd) {
+        log.debug("Creating new issue.");
+        try {
+            String issueType = "NewspaperIssue";
+            DocStruct issue = dd.createDocStruct(prefs.getDocStrctTypeByName(issueType));
+            //            volume.addChild(issue);
+            String targetTypeName = "TitleDocMain";
+            MetadataType targetType = prefs.getMetadataTypeByName(targetTypeName);
+            String value = "HELLO_world";
+            Metadata md = createMetadata(targetType, value, false);
+            issue.addMetadata(md);
+
+            return issue;
+
+        } catch (TypeNotAllowedForParentException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+            return null;
+
+        } catch (MetadataTypeNotAllowedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     private Process createAndSaveNewProcess(BeanHelper bhelp, Process template, String processName, Fileformat fileformat) {
         // save the process
         Process process = bhelp.createAndSaveNewProcess(template, processName, fileformat);
@@ -407,11 +544,18 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         try {
             ProcessManager.saveProcess(process);
+            //            process.writeMetadataFile(fileformat);
+
         } catch (DAOException e) {
             String message = "Error while trying to save the process: " + e.getMessage();
             reportError(message);
             return null;
         }
+//        } catch (WriteException | PreferencesException | IOException | SwapException e) {
+//            // TODO Auto-generated catch block
+//            e.printStackTrace();
+//            return null;
+//        }
 
         return process;
     }
