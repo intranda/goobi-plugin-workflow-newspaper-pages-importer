@@ -4,10 +4,10 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,11 +38,13 @@ import lombok.extern.log4j.Log4j2;
 import net.xeoh.plugins.base.annotations.PluginImplementation;
 import ugh.dl.DigitalDocument;
 import ugh.dl.DocStruct;
+import ugh.dl.DocStructType;
 import ugh.dl.Fileformat;
 import ugh.dl.Metadata;
 import ugh.dl.MetadataType;
 import ugh.dl.Person;
 import ugh.dl.Prefs;
+import ugh.dl.Reference;
 import ugh.exceptions.IncompletePersonObjectException;
 import ugh.exceptions.MetadataTypeNotAllowedException;
 import ugh.exceptions.PreferencesException;
@@ -63,7 +65,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private static final String NEWSPAPER_VOLUME_TYPE = "NewspaperVolume";
     private static final String NEWSPAPER_ISSUE_TYPE = "NewspaperIssue";
 
-    private static final Set<String> ISSUES_SET = new HashSet<>();
+    private static final Map<String, DocStruct> ISSUES_MAP = new HashMap<>();
 
     //    private static final String YEAR_PATTERN_STRING = "2\\d{3}";
 
@@ -167,26 +169,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 
                 // run through import files (e.g. from importFolder)
                 for (Path pdfFile : pdfFiles) {
-                    Thread.sleep(100);
-                    if (!run) {
-                        break;
-                    }
 
-                    //                    String fileName = pdfFile.getFileName().toString();
-                    //                    NewspaperPage page = new NewspaperPage(fileName);
-
-                    //                    String fileDate = getDateFromFileName(fileName);
-                    //                    log.debug("fileDate = " + fileDate);
-
-                    // TODO: check blankness of fileDate
-
-                    //                    String processName = createProcessName(fileDate);
-                    //                    updateLog("Start importing: " + processName, 1);
-
-                    // TODO: process pdfFile
-
-                    //                    boolean success = addPdfFileToProcess(bhelp, processName, pdfFile);
-                    //                    boolean success = addPdfFileToProcess(bhelp, fileDate, pdfFile);
                     boolean success = addPdfFileToProcess(bhelp, pdfFile);
                     if (!success) {
                         String message = "Error while creating a process during the import";
@@ -203,14 +186,16 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 run = false;
                 Thread.sleep(2000);
                 updateLog("Import completed.");
-            } catch (InterruptedException e) {
+            }catch(
+
+            InterruptedException e)
+            {
                 Helper.setFehlerMeldung("Error while trying to execute the import: " + e.getMessage());
                 log.error("Error while trying to execute the import", e);
                 updateLog("Error while trying to execute the import: " + e.getMessage(), 3);
             }
 
-        };
-        new Thread(runnable).start();
+            };new Thread(runnable).start();
     }
 
     private String getDateFromFileName(String fileName) {
@@ -246,19 +231,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         return processExists ? tryUpdateOldProcess(existingProcess, page) : tryCreateAndSaveNewProcess(bhelp, processName, page);
     }
-
-    //    private boolean addPdfFileToProcess(BeanHelper bhelp, String fileDate, Path pdfFilePath) {
-    //        // prepare process name
-    //        String processName = createProcessName(fileDate);
-    //        updateLog("Start importing: " + processName, 1);
-    //
-    //        // check existence of process
-    //        Process existingProcess = getProcessByName(processName);
-    //        //        boolean processExists = checkExistenceOfProcess(processName);
-    //        boolean processExists = existingProcess != null;
-    //
-    //        return processExists ? tryUpdateOldProcess(existingProcess, pdfFilePath) : tryCreateAndSaveNewProcess(bhelp, processName, pdfFilePath);
-    //    }
 
     //    private boolean checkExistenceOfProcess(String processName) {
     //        log.debug("Counting number of processes for " + processName);
@@ -309,7 +281,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         try {
             Prefs prefs = process.getRegelsatz().getPreferences();
             // read metadata
-            Fileformat fileformat = process.readMetadataFile(); // ERROR: The process {} cannot be loaded as there is no format -.:
+            Fileformat fileformat = process.readMetadataFile();
 
             log.debug("fileformat is " + (fileformat == null ? "" : "NOT") + " null");
 
@@ -318,37 +290,26 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             DocStruct logical = dd.getLogicalDocStruct();
             DocStruct volume = logical.getAllChildren().get(0);
 
-            // create and add new issue
-            DocStruct issue = createNewIssue(prefs, dd, page);
-            //            if (issue == null) {
-            //                // TODO: error happened
-            //                //                return;
-            //                log.debug("Issue already exists: " + page.getDate());
-            //            }
+            DocStruct issue = getCurrentIssue(prefs, dd, volume, page);
 
-            if (issue != null) {
-                try {
-                    volume.addChild(issue);
-                } catch (TypeNotAllowedAsChildException e) {
-                    // TODO
-                    e.printStackTrace();
-                    return;
-                }
-
-            } else {
-                log.debug("Issue already exists: " + page.getDate());
+            if (issue == null) {
+                // TODO: error happened
+                return;
             }
 
-            //            try {
-            //                if (issue != null) {
-            //                    volume.addChild(issue);
-            //                }
-            //
-            //            } catch (TypeNotAllowedAsChildException e) {
-            //                // TODO Auto-generated catch block
-            //                e.printStackTrace();
-            //                return;
-            //            }
+            // add page to issue
+            addPageToIssue(prefs, dd, issue, page);
+
+            log.debug("------- after adding page to the issue -------");
+
+            List<Reference> allToReferences = issue.getAllToReferences();
+            for (Reference toReference : allToReferences) {
+                String sourceId = toReference.getSource().getIdentifier();
+                String targetId = toReference.getTarget().getIdentifier();
+                log.debug(sourceId + " -> " + targetId);
+            }
+
+            log.debug("-------------------------------");
 
             // write changes into file
             process.writeMetadataFile(fileformat);
@@ -358,6 +319,22 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             e.printStackTrace();
         }
 
+    }
+
+    private DocStruct getCurrentIssue(Prefs prefs, DigitalDocument dd, DocStruct volume, NewspaperPage page) throws TypeNotAllowedAsChildException {
+        String issueTitle = page.getDate();
+        if (ISSUES_MAP.containsKey(issueTitle)) {
+            return ISSUES_MAP.get(issueTitle);
+        }
+
+        // issue does not exist yet, create a new one
+        DocStruct issue = createNewIssue(prefs, dd, page);
+        if (issue != null) {
+            log.debug("Adding new issue to the volume.");
+            volume.addChild(issue);
+        }
+
+        return issue;
     }
 
     /**
@@ -386,6 +363,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             return false;
         }
 
+        //        try {
+        //            process.writeMetadataFile(fileformat);
+        //
+        //        } catch (WriteException | PreferencesException | IOException | SwapException e1) {
+        //            // TODO Auto-generated catch block
+        //            e1.printStackTrace();
+        //        }
+
         // copy files into the media folder of the process
         try {
             copyMediaFile(process, page.getFilePath());
@@ -394,14 +379,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             reportError(message);
             return false;
         }
-
-        //        try {
-        //            process.writeMetadataFile(fileformat);
-        //        } catch (WriteException | PreferencesException | IOException | SwapException e) {
-        //            // TODO Auto-generated catch block
-        //            e.printStackTrace();
-        //            return false;
-        //        }
 
         // start open automatic tasks
         startOpenAutomaticTasks(process);
@@ -452,8 +429,9 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             log.debug("adding DocStruct child: " + NEWSPAPER_VOLUME_TYPE);
             try {
                 logical.addChild(volume);
-                log.debug("logical has identifier = " + logical.getIdentifier());
+                //                log.debug("logical has identifier = " + logical.getIdentifier());
                 //                volume.setReferenceToAnchor(logical.getIdentifier());
+                //                logical.addReferenceTo(volume, "logical_physical");
 
             } catch (TypeNotAllowedAsChildException e) {
                 // TODO Auto-generated catch block
@@ -468,8 +446,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 return null;
             }
 
+            //            // link page to issue
+            //            addPageToIssue(prefs, dd, issue, page);
+
             try {
                 volume.addChild(issue);
+                //                volume.addReferenceTo(issue, "logical_physical");
 
             } catch (TypeNotAllowedAsChildException e) {
                 // TODO Auto-generated catch block
@@ -477,6 +459,32 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 return null;
             }
 
+            //            DocStruct issue = getCurrentIssue(prefs, dd, volume, page);
+            //
+            //            //            if (issue == null) {
+            //            //                // TODO: error happened
+            //            //                //                return;
+            //            //                log.debug("Issue already exists: " + page.getDate());
+            //            //            }
+            //
+            //            if (issue == null) {
+            //                // TODO: error happened
+            //                return null;
+            //            }
+
+            // link page to issue
+            addPageToIssue(prefs, dd, issue, page);
+
+            log.debug("------- after adding page to the issue -------");
+
+            List<Reference> allToReferences = issue.getAllToReferences();
+            for (Reference toReference : allToReferences) {
+                String sourceId = toReference.getSource().getIdentifier();
+                String targetId = toReference.getTarget().getIdentifier();
+                log.debug(sourceId + " -> " + targetId);
+            }
+
+            log.debug("-------------------------------");
 
             // create the metadata fields by reading the config (and get content from the content files of course)
             createMetadataFields(prefs, logical, importSets);
@@ -487,7 +495,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             String message = "Error while preparing the Fileformat for the new process: " + e.getMessage();
             reportError(message);
             return null;
+
         }
+        //        catch (TypeNotAllowedAsChildException e) {
+        //            // TODO Auto-generated catch block
+        //            e.printStackTrace();
+        //            return null;
+        //        }
 
     }
 
@@ -556,16 +570,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     private DocStruct createNewIssue(Prefs prefs, DigitalDocument dd, NewspaperPage page) {
         log.debug("Creating new issue from NewspaperPage: " + page.getFileName());
-        String titleValue = page.getDate();
-        // check existence of this issue
-        if (ISSUES_SET.contains(titleValue)) {
-            // issue already exists, no need to create again
-            return null;
-        }
 
         try {
             DocStruct issue = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_ISSUE_TYPE));
-            //            volume.addChild(issue);
+
+            String issueId = page.getDate();
+            issue.setIdentifier(issueId);
+
             String targetTypeName = "TitleDocMainShort";
             MetadataType targetType = prefs.getMetadataTypeByName(targetTypeName);
             String value = "HELLO_world";
@@ -575,11 +586,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // TitleDocMain
             String titleTypeName = "TitleDocMain";
             MetadataType titleType = prefs.getMetadataTypeByName(titleTypeName);
-            //            String titleValue = page.getDate();
+            String titleValue = page.getDate();
             Metadata titleMetadata = createMetadata(titleType, titleValue, false);
             issue.addMetadata(titleMetadata);
 
-            ISSUES_SET.add(titleValue);
+            //            ISSUES_SET.add(titleValue);
+            ISSUES_MAP.put(titleValue, issue);
+            log.debug("New issue created: " + titleValue);
 
             return issue;
 
@@ -592,6 +605,73 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // TODO Auto-generated catch block
             e.printStackTrace();
             return null;
+        }
+    }
+
+    private void addPageToIssue(Prefs prefs, DigitalDocument dd, DocStruct issue, NewspaperPage page) {
+        log.debug("adding new page '" + page.getPageNumber() + "' to issue '" + page.getDate());
+        DocStruct physical = dd.getPhysicalDocStruct();
+        DocStruct logical = dd.getLogicalDocStruct();
+        DocStruct volume = dd.getLogicalDocStruct().getAllChildren().get(0);
+        DocStructType pageType = prefs.getDocStrctTypeByName("page");
+        String pagePhysNumber = page.getPageNumber();
+        //        String pageLogNumber = "S." + page.getPageNumber();
+        String pageLogNumber = page.getDate() + "_" + page.getPageNumber();
+        String pageId = page.getDate() + "_" + page.getPageNumber();
+
+        try {
+            DocStruct dsPage = dd.createDocStruct(pageType);
+            dsPage.setIdentifier(pageId);
+            physical.addChild(dsPage);
+
+            Metadata metaPhysPageNumber = new Metadata(prefs.getMetadataTypeByName("physPageNumber"));
+            metaPhysPageNumber.setValue(pagePhysNumber);
+            dsPage.addMetadata(metaPhysPageNumber);
+
+            Metadata metaLogPageNumber = new Metadata(prefs.getMetadataTypeByName("logicalPageNumber"));
+            metaLogPageNumber.setValue(pageLogNumber);
+            dsPage.addMetadata(metaLogPageNumber);
+
+            //            issue.addChild(dsPage);
+
+            //            Reference ref = logical.addReferenceTo(dsPage, "logical_physical");
+            Reference ref = issue.addReferenceTo(dsPage, "logical_physical");
+
+            //            String sourceId = ref.getSource().getIdentifier(); // null by issue creation, valid by issue updating
+            //            String targetId = ref.getTarget().getIdentifier(); // always null 
+
+            //            String sourceId = ref.getSource().getAdmId(); // always null
+            //            String targetId = ref.getTarget().getAdmId(); // always null
+
+            //            long sourceId = ref.getSourceID(); // always 0
+            //            long targetId = ref.getTargetID(); // always 0
+//            log.debug("Reference created between: " + sourceId + " -> " + targetId);
+            
+            List<Reference> issueToReferences = issue.getAllToReferences();
+            int numberOfToReferences = issueToReferences.size();
+            log.debug("======= Issue has " + numberOfToReferences + " to references =======");
+            for (Reference reference : issueToReferences) {
+                 String sourceId =  reference.getSource().getIdentifier();
+                 String targetId = reference.getTarget().getIdentifier();
+                 log.debug(sourceId + " -> " + targetId);
+            }
+            log.debug("=====================");
+            //            dsPage.addReferenceFrom(issue, "logical_physical"); // equivalent
+
+            // TODO: uncomment this line
+            //            volume.addReferenceTo(dsPage, "logical_physical");
+
+        } catch (TypeNotAllowedForParentException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+
+        } catch (TypeNotAllowedAsChildException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+
+        } catch (MetadataTypeNotAllowedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
         }
     }
 
