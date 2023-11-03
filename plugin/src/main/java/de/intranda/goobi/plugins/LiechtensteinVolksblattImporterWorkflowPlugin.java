@@ -397,13 +397,18 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             logical.setIdentifier(identifier);
             dd.setLogicalDocStruct(logical);
 
-            // create new issue and add it 
-            String childTypeName = "NewspaperVolume";
-            DocStruct volume = dd.createDocStruct(prefs.getDocStrctTypeByName(childTypeName));
+            // prepare the volume
+            String volumeTypeName = "NewspaperVolume";
+            DocStruct volume = dd.createDocStruct(prefs.getDocStrctTypeByName(volumeTypeName));
+            String volumeId = "Volume_ID";
+            // NewspaperVolume should have a CatalogIDDigital that is different from the one of Newspaper
+            MetadataType catalogIdDigitalType = prefs.getMetadataTypeByName("CatalogIDDigital");
+            Metadata volumeIdMetadata = createMetadata(catalogIdDigitalType, volumeId, false);
+            volume.addMetadata(volumeIdMetadata);
 
-            volume.addReferenceTo(logical, "logical_physical");
+            //            volume.addReferenceTo(logical, "logical_physical");
             //            volume.setReferenceToAnchor(logical.getIdentifier());
-            log.debug("adding DocStruct child: " + childTypeName);
+            log.debug("adding DocStruct child: " + volumeTypeName);
             try {
                 logical.addChild(volume);
                 log.debug("logical has identifier = " + logical.getIdentifier());
