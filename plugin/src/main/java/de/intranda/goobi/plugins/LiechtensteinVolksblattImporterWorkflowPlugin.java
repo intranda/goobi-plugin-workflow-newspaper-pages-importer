@@ -169,6 +169,10 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 
                 // run through import files (e.g. from importFolder)
                 for (Path pdfFile : pdfFiles) {
+                    Thread.sleep(100);
+                    if (!run) {
+                        break;
+                    }
 
                     boolean success = addPdfFileToProcess(bhelp, pdfFile);
                     if (!success) {
@@ -186,16 +190,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 run = false;
                 Thread.sleep(2000);
                 updateLog("Import completed.");
-            }catch(
-
-            InterruptedException e)
-            {
+            } catch (InterruptedException e) {
                 Helper.setFehlerMeldung("Error while trying to execute the import: " + e.getMessage());
                 log.error("Error while trying to execute the import", e);
                 updateLog("Error while trying to execute the import: " + e.getMessage(), 3);
             }
 
-            };new Thread(runnable).start();
+        };
+        new Thread(runnable).start();
     }
 
     private String getDateFromFileName(String fileName) {
