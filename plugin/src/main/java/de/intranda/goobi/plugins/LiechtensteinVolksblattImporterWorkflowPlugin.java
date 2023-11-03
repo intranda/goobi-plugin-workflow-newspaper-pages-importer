@@ -4,8 +4,10 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Queue;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -56,6 +58,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private static final StorageProviderInterface storageProvider = StorageProvider.getInstance();
     private static final Pattern YEAR_PATTERN = Pattern.compile("2\\d{3}");
     private static final Pattern DATE_PATTERN = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
+
+    private static final String NEWSPAPER_TYPE = "Newspaper";
+    private static final String NEWSPAPER_VOLUME_TYPE = "NewspaperVolume";
+    private static final String NEWSPAPER_ISSUE_TYPE = "NewspaperIssue";
+
+    private static final Set<String> ISSUES_SET = new HashSet<>();
 
     //    private static final String YEAR_PATTERN_STRING = "2\\d{3}";
 
@@ -268,7 +276,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         Path pdfFilePath = page.getFilePath();
         // TODO: metadata
         try {
-            updateMetadataOfProcess(process);
+            updateMetadataOfProcess(process, page);
         } catch (ReadException | IOException | SwapException e1) {
             // TODO Auto-generated catch block
             // read Fileformat
@@ -296,7 +304,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return true;
     }
 
-    private void updateMetadataOfProcess(Process process) throws ReadException, IOException, SwapException, PreferencesException {
+    private void updateMetadataOfProcess(Process process, NewspaperPage page) throws ReadException, IOException, SwapException, PreferencesException {
         log.debug("updating metadata of process: " + process.getTitel());
         try {
             Prefs prefs = process.getRegelsatz().getPreferences();
@@ -306,11 +314,45 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             log.debug("fileformat is " + (fileformat == null ? "" : "NOT") + " null");
 
             // update metadata
-            //        DigitalDocument dd = fileformat.getDigitalDocument();
-            //        DocStruct logical = dd.getLogicalDocStruct();
-            //        DocStruct volume = logical.getAllChildren().get(0);
+            DigitalDocument dd = fileformat.getDigitalDocument();
+            DocStruct logical = dd.getLogicalDocStruct();
+            DocStruct volume = logical.getAllChildren().get(0);
+
+            // create and add new issue
+            DocStruct issue = createNewIssue(prefs, dd, page);
+            //            if (issue == null) {
+            //                // TODO: error happened
+            //                //                return;
+            //                log.debug("Issue already exists: " + page.getDate());
+            //            }
+
+            if (issue != null) {
+                try {
+                    volume.addChild(issue);
+                } catch (TypeNotAllowedAsChildException e) {
+                    // TODO
+                    e.printStackTrace();
+                    return;
+                }
+
+            } else {
+                log.debug("Issue already exists: " + page.getDate());
+            }
+
+            //            try {
+            //                if (issue != null) {
+            //                    volume.addChild(issue);
+            //                }
+            //
+            //            } catch (TypeNotAllowedAsChildException e) {
+            //                // TODO Auto-generated catch block
+            //                e.printStackTrace();
+            //                return;
+            //            }
 
             // write changes into file
+            process.writeMetadataFile(fileformat);
+
         } catch (Exception e) {
             log.debug("Exception caught while updating metadata of process: " + process.getTitel());
             e.printStackTrace();
@@ -329,7 +371,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         // get the correct workflow to use
         Process template = ProcessManager.getProcessByExactTitle(workflow);
         // prepare the Fileformat based on the template Process
-        Fileformat fileformat = prepareFileformatForNewProcess(template, processName);
+        Fileformat fileformat = prepareFileformatForNewProcess(template, processName, page);
         if (fileformat == null) {
             // error happened during the preparation
             return false;
@@ -376,7 +418,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @param processName title of the new process
      * @return Fileformat
      */
-    private Fileformat prepareFileformatForNewProcess(Process template, String processName) {
+    private Fileformat prepareFileformatForNewProcess(Process template, String processName, NewspaperPage page) {
         Prefs prefs = template.getRegelsatz().getPreferences();
 
         try {
@@ -398,9 +440,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             dd.setLogicalDocStruct(logical);
 
             // prepare the volume
-            String volumeTypeName = "NewspaperVolume";
-            DocStruct volume = dd.createDocStruct(prefs.getDocStrctTypeByName(volumeTypeName));
-            String volumeId = "Volume_ID";
+            DocStruct volume = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_VOLUME_TYPE));
+            String volumeId = "Volume_ID"; // TODO: change this
             // NewspaperVolume should have a CatalogIDDigital that is different from the one of Newspaper
             MetadataType catalogIdDigitalType = prefs.getMetadataTypeByName("CatalogIDDigital");
             Metadata volumeIdMetadata = createMetadata(catalogIdDigitalType, volumeId, false);
@@ -408,7 +449,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             //            volume.addReferenceTo(logical, "logical_physical");
             //            volume.setReferenceToAnchor(logical.getIdentifier());
-            log.debug("adding DocStruct child: " + volumeTypeName);
+            log.debug("adding DocStruct child: " + NEWSPAPER_VOLUME_TYPE);
             try {
                 logical.addChild(volume);
                 log.debug("logical has identifier = " + logical.getIdentifier());
@@ -421,7 +462,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             }
 
             //            logical.addChild(new DocStruct());
-            DocStruct issue = createNewIssue(prefs, dd);
+            DocStruct issue = createNewIssue(prefs, dd, page);
             if (issue == null) {
                 // TODO: error happened
                 return null;
@@ -513,17 +554,32 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return md;
     }
 
-    private DocStruct createNewIssue(Prefs prefs, DigitalDocument dd) {
-        log.debug("Creating new issue.");
+    private DocStruct createNewIssue(Prefs prefs, DigitalDocument dd, NewspaperPage page) {
+        log.debug("Creating new issue from NewspaperPage: " + page.getFileName());
+        String titleValue = page.getDate();
+        // check existence of this issue
+        if (ISSUES_SET.contains(titleValue)) {
+            // issue already exists, no need to create again
+            return null;
+        }
+
         try {
-            String issueType = "NewspaperIssue";
-            DocStruct issue = dd.createDocStruct(prefs.getDocStrctTypeByName(issueType));
+            DocStruct issue = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_ISSUE_TYPE));
             //            volume.addChild(issue);
-            String targetTypeName = "TitleDocMain";
+            String targetTypeName = "TitleDocMainShort";
             MetadataType targetType = prefs.getMetadataTypeByName(targetTypeName);
             String value = "HELLO_world";
             Metadata md = createMetadata(targetType, value, false);
             issue.addMetadata(md);
+
+            // TitleDocMain
+            String titleTypeName = "TitleDocMain";
+            MetadataType titleType = prefs.getMetadataTypeByName(titleTypeName);
+            //            String titleValue = page.getDate();
+            Metadata titleMetadata = createMetadata(titleType, titleValue, false);
+            issue.addMetadata(titleMetadata);
+
+            ISSUES_SET.add(titleValue);
 
             return issue;
 
