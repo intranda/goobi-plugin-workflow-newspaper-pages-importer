@@ -8,8 +8,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.apache.commons.collections4.queue.CircularFifoQueue;
 import org.apache.commons.configuration.HierarchicalConfiguration;
@@ -58,10 +56,7 @@ import ugh.fileformats.mets.MetsMods;
 public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowPlugin, IPushPlugin {
 
     private static final StorageProviderInterface storageProvider = StorageProvider.getInstance();
-    private static final Pattern YEAR_PATTERN = Pattern.compile("2\\d{3}");
-    private static final Pattern DATE_PATTERN = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
 
-    private static final String NEWSPAPER_TYPE = "Newspaper";
     private static final String NEWSPAPER_VOLUME_TYPE = "NewspaperVolume";
     private static final String NEWSPAPER_ISSUE_TYPE = "NewspaperIssue";
 
@@ -200,28 +195,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         new Thread(runnable).start();
     }
 
-    private String getDateFromFileName(String fileName) {
-        Matcher matcher = DATE_PATTERN.matcher(fileName);
-        return matcher.find() ? matcher.group() : "";
-    }
-
-    /**
-     * create the title for the new process
-     * 
-     * @param dateString
-     * @return new process title
-     */
-    private String createProcessName(String dateString) {
-        log.debug("creating process name for: " + dateString);
-        log.debug(YEAR_PATTERN.toString());
-        // create a process name using the year encoded in the fileName
-        Matcher matcher = YEAR_PATTERN.matcher(dateString);
-
-        return matcher.find() ? matcher.group() : "";
-    }
-
     private boolean addPdfFileToProcess(BeanHelper bhelp, Path pdfFilePath) {
-        //        String fileName = pdfFilePath.getFileName().toString();
         NewspaperPage page = new NewspaperPage(pdfFilePath);
         
         String processName = page.getYear();
@@ -441,7 +415,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 return null;
             }
 
-            //            logical.addChild(new DocStruct());
             DocStruct issue = createNewIssue(prefs, dd, page);
             if (issue == null) {
                 // TODO: error happened
@@ -453,26 +426,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             try {
                 volume.addChild(issue);
-                //                volume.addReferenceTo(issue, "logical_physical");
 
             } catch (TypeNotAllowedAsChildException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
                 return null;
             }
-
-            //            DocStruct issue = getCurrentIssue(prefs, dd, volume, page);
-            //
-            //            //            if (issue == null) {
-            //            //                // TODO: error happened
-            //            //                //                return;
-            //            //                log.debug("Issue already exists: " + page.getDate());
-            //            //            }
-            //
-            //            if (issue == null) {
-            //                // TODO: error happened
-            //                return null;
-            //            }
 
             // link page to issue
             addPageToIssue(prefs, dd, issue, page);
@@ -499,11 +458,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             return null;
 
         }
-        //        catch (TypeNotAllowedAsChildException e) {
-        //            // TODO Auto-generated catch block
-        //            e.printStackTrace();
-        //            return null;
-        //        }
 
     }
 
@@ -638,16 +592,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             //            Reference ref = logical.addReferenceTo(dsPage, "logical_physical");
             Reference ref = issue.addReferenceTo(dsPage, "logical_physical");
-
-            //            String sourceId = ref.getSource().getIdentifier(); // null by issue creation, valid by issue updating
-            //            String targetId = ref.getTarget().getIdentifier(); // always null 
-
-            //            String sourceId = ref.getSource().getAdmId(); // always null
-            //            String targetId = ref.getTarget().getAdmId(); // always null
-
-            //            long sourceId = ref.getSourceID(); // always 0
-            //            long targetId = ref.getTargetID(); // always 0
-//            log.debug("Reference created between: " + sourceId + " -> " + targetId);
             
             List<Reference> issueToReferences = issue.getAllToReferences();
             int numberOfToReferences = issueToReferences.size();
