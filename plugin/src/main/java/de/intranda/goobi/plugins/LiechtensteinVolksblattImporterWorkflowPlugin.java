@@ -79,11 +79,11 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     @Getter
     int itemsTotal = 0;
     @Getter
-    private Queue<LogMessage> logQueue = new CircularFifoQueue<LogMessage>(48);
+    private Queue<LogMessage> logQueue = new CircularFifoQueue<>(48);
     private String importFolder;
     private String workflow;
     private String publicationType;
-    
+
     @Override
     public PluginType getType() {
         return PluginType.Workflow;
@@ -108,15 +108,15 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * private method to read main configuration file
      */
     private void readConfiguration() {
-    	updateLog("Start reading the configuration");
-    	
+        updateLog("Start reading the configuration");
+
         // read some main configuration
         importFolder = ConfigPlugins.getPluginConfig(title).getString("importFolder");
         workflow = ConfigPlugins.getPluginConfig(title).getString("workflow");
         publicationType = ConfigPlugins.getPluginConfig(title).getString("publicationType");
-        
+
         // read list of mapping configuration
-        importSets = new ArrayList<ImportSet>();
+        importSets = new ArrayList<>();
         List<HierarchicalConfiguration> mappings = ConfigPlugins.getPluginConfig(title).configurationsAt("importSet");
         for (HierarchicalConfiguration node : mappings) {
             String settitle = node.getString("[@title]", "-");
@@ -125,7 +125,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             boolean person = node.getBoolean("[@person]", false);
             importSets.add(new ImportSet(settitle, source, target, person));
         }
-        
+
         // write a log into the UI
         updateLog("Configuration successfully read");
     }
@@ -143,17 +143,17 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @param importset
      */
     public void startImport(ImportSet importset) {
-    	updateLog("Start import for: " + importset.getTitle());
+        updateLog("Start import for: " + importset.getTitle());
         progress = 0;
         BeanHelper bhelp = new BeanHelper();
-        
+
         // run the import in a separate thread to allow a dynamic progress bar
         run = true;
         Runnable runnable = () -> {
-            
+
             // read input file
             try {
-            	updateLog("Run through all import files");
+                updateLog("Run through all import files");
                 int start = 0;
 
                 List<Path> pdfFiles = storageProvider.listFiles(importFolder);
@@ -161,7 +161,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
                 itemsTotal = end - start;
                 itemCurrent = start;
-                
+
                 // run through import files (e.g. from importFolder)
                 for (Path pdfFile : pdfFiles) {
                     Thread.sleep(100);
@@ -180,7 +180,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                     progress = 100 * itemCurrent / itemsTotal;
                     updateLog("Processing of record done.");
                 }
-                
+
                 // finally last push
                 run = false;
                 Thread.sleep(2000);
@@ -197,7 +197,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     private boolean addPdfFileToProcess(BeanHelper bhelp, Path pdfFilePath) {
         NewspaperPage page = new NewspaperPage(pdfFilePath);
-        
+
         String processName = page.getYear();
         updateLog("Start importing: " + processName, 1);
 
@@ -567,21 +567,18 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private void addPageToIssue(Prefs prefs, DigitalDocument dd, DocStruct issue, NewspaperPage page) {
         log.debug("adding new page '" + page.getPageNumber() + "' to issue '" + page.getDate());
         DocStruct physical = dd.getPhysicalDocStruct();
-        DocStruct logical = dd.getLogicalDocStruct();
         DocStruct volume = dd.getLogicalDocStruct().getAllChildren().get(0);
         DocStructType pageType = prefs.getDocStrctTypeByName("page");
         String pagePhysNumber = page.getPageNumber();
         //        String pageLogNumber = "S." + page.getPageNumber();
         String pageLogNumber = page.getDate() + "_" + page.getPageNumber();
-        String pageId = page.getDate() + "_" + page.getPageNumber();
 
         try {
             DocStruct dsPage = dd.createDocStruct(pageType);
-            dsPage.setIdentifier(pageId);
             physical.addChild(dsPage);
 
             Metadata metaPhysPageNumber = new Metadata(prefs.getMetadataTypeByName("physPageNumber"));
-            metaPhysPageNumber.setValue(pagePhysNumber);
+            metaPhysPageNumber.setValue(String.valueOf(physical.getAllChildren().size()));
             dsPage.addMetadata(metaPhysPageNumber);
 
             Metadata metaLogPageNumber = new Metadata(prefs.getMetadataTypeByName("logicalPageNumber"));
@@ -590,16 +587,16 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             //            issue.addChild(dsPage);
 
-            //            Reference ref = logical.addReferenceTo(dsPage, "logical_physical");
-            Reference ref = issue.addReferenceTo(dsPage, "logical_physical");
-            
+            volume.addReferenceTo(dsPage, "logical_physical");
+            issue.addReferenceTo(dsPage, "logical_physical");
+
             List<Reference> issueToReferences = issue.getAllToReferences();
             int numberOfToReferences = issueToReferences.size();
             log.debug("======= Issue has " + numberOfToReferences + " to references =======");
             for (Reference reference : issueToReferences) {
-                 String sourceId =  reference.getSource().getIdentifier();
-                 String targetId = reference.getTarget().getIdentifier();
-                 log.debug(sourceId + " -> " + targetId);
+                String sourceId =  reference.getSource().getIdentifier();
+                String targetId = reference.getTarget().getIdentifier();
+                log.debug(sourceId + " -> " + targetId);
             }
             log.debug("=====================");
             //            dsPage.addReferenceFrom(issue, "logical_physical"); // equivalent
@@ -638,11 +635,11 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             reportError(message);
             return null;
         }
-//        } catch (WriteException | PreferencesException | IOException | SwapException e) {
-//            // TODO Auto-generated catch block
-//            e.printStackTrace();
-//            return null;
-//        }
+        //        } catch (WriteException | PreferencesException | IOException | SwapException e) {
+        //            // TODO Auto-generated catch block
+        //            e.printStackTrace();
+        //            return null;
+        //        }
 
         return process;
     }
@@ -703,27 +700,27 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         this.pusher = pusher;
     }
 
-	/**
-	 * simple method to send status message to gui
-	 * @param logmessage
-	 */
-	private void updateLog(String logmessage) {
-		updateLog(logmessage, 0);
-	}
-	
-	/**
-	 * simple method to send status message with specific level to gui
-	 * @param logmessage
-	 */
-	private void updateLog(String logmessage, int level) {
-		logQueue.add(new LogMessage(logmessage, level));
-		log.debug(logmessage);
-		if (pusher != null && System.currentTimeMillis() - lastPush > 500) {
+    /**
+     * simple method to send status message to gui
+     * @param logmessage
+     */
+    private void updateLog(String logmessage) {
+        updateLog(logmessage, 0);
+    }
+
+    /**
+     * simple method to send status message with specific level to gui
+     * @param logmessage
+     */
+    private void updateLog(String logmessage, int level) {
+        logQueue.add(new LogMessage(logmessage, level));
+        log.debug(logmessage);
+        if (pusher != null && System.currentTimeMillis() - lastPush > 500) {
             lastPush = System.currentTimeMillis();
             pusher.send("update");
         }
-	}
-	
+    }
+
     @Data
     @AllArgsConstructor
     public class ImportSet {
