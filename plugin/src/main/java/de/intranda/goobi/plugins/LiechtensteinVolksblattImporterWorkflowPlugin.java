@@ -34,6 +34,7 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.extern.log4j.Log4j2;
 import net.xeoh.plugins.base.annotations.PluginImplementation;
+import ugh.dl.ContentFile;
 import ugh.dl.DigitalDocument;
 import ugh.dl.DocStruct;
 import ugh.dl.DocStructType;
@@ -589,6 +590,11 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             volume.addReferenceTo(dsPage, "logical_physical");
             issue.addReferenceTo(dsPage, "logical_physical");
+            ContentFile cf = new ContentFile();
+            cf.setMimetype("application/pdf");
+            cf.setLocation("file://" +page.getFileName());
+            dsPage.addContentFile(cf);
+
 
             List<Reference> issueToReferences = issue.getAllToReferences();
             int numberOfToReferences = issueToReferences.size();
