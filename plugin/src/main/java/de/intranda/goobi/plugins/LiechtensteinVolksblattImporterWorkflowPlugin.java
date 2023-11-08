@@ -43,7 +43,6 @@ import ugh.dl.Metadata;
 import ugh.dl.MetadataType;
 import ugh.dl.Person;
 import ugh.dl.Prefs;
-import ugh.dl.Reference;
 import ugh.exceptions.IncompletePersonObjectException;
 import ugh.exceptions.MetadataTypeNotAllowedException;
 import ugh.exceptions.PreferencesException;
@@ -60,6 +59,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     private static final String NEWSPAPER_VOLUME_TYPE = "NewspaperVolume";
     private static final String NEWSPAPER_ISSUE_TYPE = "NewspaperIssue";
+
+    private static final String TITLE_DOC_MAIN_TYPE = "TitleDocMain";
 
     private static final Set<String> ISSUES_SET = new HashSet<>();
 
@@ -265,25 +266,16 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             DocStruct logical = dd.getLogicalDocStruct();
             DocStruct volume = logical.getAllChildren().get(0);
 
-            DocStruct issue = getCurrentIssue(prefs, dd, volume, page);
+            DocStruct issue = getIssueForPage(prefs, dd, volume, page);
             if (issue == null) {
                 // TODO: error happened
                 return;
             }
 
+            process.writeMetadataFile(fileformat);
+
             // add page to issue
             addPageToIssue(prefs, dd, issue, page);
-
-            log.debug("------- after adding page to the issue -------");
-
-            List<Reference> allToReferences = issue.getAllToReferences();
-            for (Reference toReference : allToReferences) {
-                String sourceId = toReference.getSource().getIdentifier();
-                String targetId = toReference.getTarget().getIdentifier();
-                log.debug(sourceId + " -> " + targetId);
-            }
-
-            log.debug("-------------------------------");
 
             // write changes into file
             process.writeMetadataFile(fileformat);
@@ -295,13 +287,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     }
 
-    private DocStruct getCurrentIssue(Prefs prefs, DigitalDocument dd, DocStruct volume, NewspaperPage page) throws TypeNotAllowedAsChildException {
-        log.debug("getCurrentIssue is called");
-
+    private DocStruct getIssueForPage(Prefs prefs, DigitalDocument dd, DocStruct volume, NewspaperPage page) throws TypeNotAllowedAsChildException {
         String pageDate = page.getDate();
+
         if (!ISSUES_SET.contains(pageDate)) {
             // issue does not exist yet, create a new one
             DocStruct issue = createNewIssue(prefs, dd, page);
+            log.debug("new issue created with additional value: " + issue.getAdditionalValue());
             if (issue != null) {
                 log.debug("Adding new issue to the volume.");
                 volume.addChild(issue);
@@ -312,8 +304,20 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         // issue already exists, go find it
         List<DocStruct> newspaperIssues = dd.getAllDocStructsByType(NEWSPAPER_ISSUE_TYPE);
         log.debug("page date = " + pageDate);
+        MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
         for (DocStruct issue : newspaperIssues) {
-            String issueTitle = issue.getAllMetadataByType(prefs.getMetadataTypeByName("TitleDocMain")).get(0).getValue();
+            // TODO: the following logic must be optimized for a large amount of issues
+            String issueTitle = issue.getAllMetadataByType(titleType).get(0).getValue();
+
+            // a potential alternative is by using setter & getter of DocStruct::additionalValue, however, it doesn't work...
+            String additionalValue = issue.getAdditionalValue(); // always null, no idea why
+            // maybe another problem caused by a modified but not saved Fileformat, OR because the additionalValue are not saved at all in the METS?
+            log.debug("additionalValue for issue '" + issueTitle + "' is: " + additionalValue);
+
+            //            log.debug("checking issue with title = " + additionalValue);
+            //            if (pageDate.equals(additionalValue)) {
+            //                return issue;
+            //            }
 
             log.debug("checking issue with title = " + issueTitle);
             if (pageDate.equals(issueTitle)) {
@@ -391,8 +395,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             // add the logical basics
             DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(publicationType)); // publicationType is Newspaper
-            String identifier = processName + "_newspaper";
-            logical.setIdentifier(identifier);
             dd.setLogicalDocStruct(logical);
 
             // prepare the volume
@@ -414,6 +416,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             }
 
             DocStruct issue = createNewIssue(prefs, dd, page);
+            log.debug("new issue created with additional value: " + issue.getAdditionalValue());
             if (issue == null) {
                 // TODO: error happened
                 return null;
@@ -520,13 +523,24 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             issue.addMetadata(md);
 
             // TitleDocMain
-            String titleTypeName = "TitleDocMain";
-            MetadataType titleType = prefs.getMetadataTypeByName(titleTypeName);
+            MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
             String titleValue = page.getDate();
             Metadata titleMetadata = createMetadata(titleType, titleValue, false);
             issue.addMetadata(titleMetadata);
 
             ISSUES_SET.add(titleValue);
+
+            // set additional value to simplify later searches
+            issue.setAdditionalValue(titleValue);
+            log.debug("setting additional value: " + titleValue);
+
+            //            List<DocStruct> savedIssues = dd.getAllDocStructsByType(NEWSPAPER_ISSUE_TYPE);
+            //            log.debug("------- saved issues are -------");
+            //            for (DocStruct savedIssue : savedIssues) {
+            //                log.debug(savedIssue.getAdditionalValue());
+            //            }
+            //            log.debug("---------------------");
+
             log.debug("New issue created: " + titleValue);
 
             return issue;
