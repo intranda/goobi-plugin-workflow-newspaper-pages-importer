@@ -4,10 +4,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.commons.collections4.queue.CircularFifoQueue;
 import org.apache.commons.configuration.HierarchicalConfiguration;
@@ -84,6 +86,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private String workflow;
     private String publicationType;
 
+    private static final Comparator<NewspaperPage> byIssueDate = (NewspaperPage page1, NewspaperPage page2) -> {
+        String date1 = page1.getDate();
+        String date2 = page2.getDate();
+        return date1.compareTo(date2);
+    };
+
     @Override
     public PluginType getType() {
         return PluginType.Workflow;
@@ -156,20 +164,20 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 updateLog("Run through all import files");
                 int start = 0;
 
-                List<Path> pdfFiles = storageProvider.listFiles(importFolder);
-                int end = pdfFiles.size();
+                List<NewspaperPage> pages = getSortedNewspaperPages(importFolder);
+                int end = pages.size();
 
                 itemsTotal = end - start;
                 itemCurrent = start;
 
                 // run through import files (e.g. from importFolder)
-                for (Path pdfFile : pdfFiles) {
+                for (NewspaperPage page : pages) {
                     Thread.sleep(100);
                     if (!run) {
                         break;
                     }
 
-                    boolean success = addPdfFileToProcess(bhelp, pdfFile);
+                    boolean success = addPdfFileToProcess(bhelp, page);
                     if (!success) {
                         String message = "Error while creating a process during the import";
                         reportError(message);
@@ -195,9 +203,15 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         new Thread(runnable).start();
     }
 
-    private boolean addPdfFileToProcess(BeanHelper bhelp, Path pdfFilePath) {
-        NewspaperPage page = new NewspaperPage(pdfFilePath);
+    private List<NewspaperPage> getSortedNewspaperPages(String folder) {
+        return storageProvider.listFiles(folder)
+                .stream()
+                .map(NewspaperPage::new)
+                .sorted(byIssueDate)
+                .collect(Collectors.toList());
+    }
 
+    private boolean addPdfFileToProcess(BeanHelper bhelp, NewspaperPage page) {
         String processName = page.getYear();
         updateLog("Start importing: " + processName, 1);
 
