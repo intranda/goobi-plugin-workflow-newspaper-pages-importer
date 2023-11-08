@@ -272,8 +272,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 return;
             }
 
-            process.writeMetadataFile(fileformat);
-
             // add page to issue
             addPageToIssue(prefs, dd, issue, page);
 
@@ -293,7 +291,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         if (!ISSUES_SET.contains(pageDate)) {
             // issue does not exist yet, create a new one
             DocStruct issue = createNewIssue(prefs, dd, page);
-            log.debug("new issue created with additional value: " + issue.getAdditionalValue());
             if (issue != null) {
                 log.debug("Adding new issue to the volume.");
                 volume.addChild(issue);
@@ -308,16 +305,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         for (DocStruct issue : newspaperIssues) {
             // TODO: the following logic must be optimized for a large amount of issues
             String issueTitle = issue.getAllMetadataByType(titleType).get(0).getValue();
-
-            // a potential alternative is by using setter & getter of DocStruct::additionalValue, however, it doesn't work...
-            String additionalValue = issue.getAdditionalValue(); // always null, no idea why
-            // maybe another problem caused by a modified but not saved Fileformat, OR because the additionalValue are not saved at all in the METS?
-            log.debug("additionalValue for issue '" + issueTitle + "' is: " + additionalValue);
-
-            //            log.debug("checking issue with title = " + additionalValue);
-            //            if (pageDate.equals(additionalValue)) {
-            //                return issue;
-            //            }
 
             log.debug("checking issue with title = " + issueTitle);
             if (pageDate.equals(issueTitle)) {
@@ -344,8 +331,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // error happened during the preparation
             return false;
         }
-
-        // create and add new issue
 
         // save the process
         Process process = createAndSaveNewProcess(bhelp, template, processName, fileformat);
@@ -416,7 +401,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             }
 
             DocStruct issue = createNewIssue(prefs, dd, page);
-            log.debug("new issue created with additional value: " + issue.getAdditionalValue());
             if (issue == null) {
                 // TODO: error happened
                 return null;
@@ -529,18 +513,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             issue.addMetadata(titleMetadata);
 
             ISSUES_SET.add(titleValue);
-
-            // set additional value to simplify later searches
-            issue.setAdditionalValue(titleValue);
-            log.debug("setting additional value: " + titleValue);
-
-            //            List<DocStruct> savedIssues = dd.getAllDocStructsByType(NEWSPAPER_ISSUE_TYPE);
-            //            log.debug("------- saved issues are -------");
-            //            for (DocStruct savedIssue : savedIssues) {
-            //                log.debug(savedIssue.getAdditionalValue());
-            //            }
-            //            log.debug("---------------------");
-
             log.debug("New issue created: " + titleValue);
 
             return issue;
