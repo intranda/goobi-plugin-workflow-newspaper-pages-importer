@@ -4,10 +4,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 
@@ -63,11 +61,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private static final String NEWSPAPER_VOLUME_TYPE = "NewspaperVolume";
     private static final String NEWSPAPER_ISSUE_TYPE = "NewspaperIssue";
 
-    private static final Map<String, DocStruct> ISSUES_MAP = new HashMap<>();
-
     private static final Set<String> ISSUES_SET = new HashSet<>();
-
-    //    private static final String YEAR_PATTERN_STRING = "2\\d{3}";
 
     @Getter
     private String title = "intranda_workflow_liechtenstein_volksblatt_importer";
@@ -272,7 +266,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             DocStruct volume = logical.getAllChildren().get(0);
 
             DocStruct issue = getCurrentIssue(prefs, dd, volume, page);
-
             if (issue == null) {
                 // TODO: error happened
                 return;
@@ -320,7 +313,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         List<DocStruct> newspaperIssues = dd.getAllDocStructsByType(NEWSPAPER_ISSUE_TYPE);
         log.debug("page date = " + pageDate);
         for (DocStruct issue : newspaperIssues) {
-            //            String issueTitle = issue.getIdentifier(); // this will be something like LOG_0007
             String issueTitle = issue.getAllMetadataByType(prefs.getMetadataTypeByName("TitleDocMain")).get(0).getValue();
 
             log.debug("checking issue with title = " + issueTitle);
@@ -329,19 +321,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             }
         }
 
-        //        String issueTitle = page.getDate();
-        //        if (ISSUES_MAP.containsKey(issueTitle)) {
-        //            return ISSUES_MAP.get(issueTitle);
-        //        }
-
-        // issue does not exist yet, create a new one
-        //        DocStruct issue = createNewIssue(prefs, dd, page);
-        //        if (issue != null) {
-        //            log.debug("Adding new issue to the volume.");
-        //            volume.addChild(issue);
-        //        }
-
-        //        return issue;
         return null;
     }
 
@@ -370,14 +349,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // error heppened while saving
             return false;
         }
-
-        //        try {
-        //            process.writeMetadataFile(fileformat);
-        //
-        //        } catch (WriteException | PreferencesException | IOException | SwapException e1) {
-        //            // TODO Auto-generated catch block
-        //            e1.printStackTrace();
-        //        }
 
         // copy files into the media folder of the process
         try {
@@ -432,14 +403,9 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             Metadata volumeIdMetadata = createMetadata(catalogIdDigitalType, volumeId, false);
             volume.addMetadata(volumeIdMetadata);
 
-            //            volume.addReferenceTo(logical, "logical_physical");
-            //            volume.setReferenceToAnchor(logical.getIdentifier());
             log.debug("adding DocStruct child: " + NEWSPAPER_VOLUME_TYPE);
             try {
                 logical.addChild(volume);
-                //                log.debug("logical has identifier = " + logical.getIdentifier());
-                //                volume.setReferenceToAnchor(logical.getIdentifier());
-                //                logical.addReferenceTo(volume, "logical_physical");
 
             } catch (TypeNotAllowedAsChildException e) {
                 // TODO Auto-generated catch block
@@ -453,9 +419,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 return null;
             }
 
-            //            // link page to issue
-            //            addPageToIssue(prefs, dd, issue, page);
-
             try {
                 volume.addChild(issue);
 
@@ -468,17 +431,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // link page to issue
             addPageToIssue(prefs, dd, issue, page);
 
-            log.debug("------- after adding page to the issue -------");
-
-            List<Reference> allToReferences = issue.getAllToReferences();
-            for (Reference toReference : allToReferences) {
-                String sourceId = toReference.getSource().getIdentifier();
-                String targetId = toReference.getTarget().getIdentifier();
-                log.debug(sourceId + " -> " + targetId);
-            }
-
-            log.debug("-------------------------------");
-
             // create the metadata fields by reading the config (and get content from the content files of course)
             createMetadataFields(prefs, logical, importSets);
 
@@ -488,7 +440,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             String message = "Error while preparing the Fileformat for the new process: " + e.getMessage();
             reportError(message);
             return null;
-
         }
 
     }
@@ -562,10 +513,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         try {
             DocStruct issue = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_ISSUE_TYPE));
 
-            log.debug("new issue created with identifier = " + issue.getIdentifier());
-            //            String issueId = page.getDate();
-            //            issue.setIdentifier(issueId);
-
             String targetTypeName = "TitleDocMainShort";
             MetadataType targetType = prefs.getMetadataTypeByName(targetTypeName);
             String value = "HELLO_world";
@@ -579,8 +526,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             Metadata titleMetadata = createMetadata(titleType, titleValue, false);
             issue.addMetadata(titleMetadata);
 
-            //            ISSUES_SET.add(titleValue);
-            //            ISSUES_MAP.put(titleValue, issue);
             ISSUES_SET.add(titleValue);
             log.debug("New issue created: " + titleValue);
 
@@ -619,30 +564,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             metaLogPageNumber.setValue(pageLogNumber);
             dsPage.addMetadata(metaLogPageNumber);
 
-            //            issue.addChild(dsPage);
-
             volume.addReferenceTo(dsPage, "logical_physical");
             issue.addReferenceTo(dsPage, "logical_physical");
             ContentFile cf = new ContentFile();
             cf.setMimetype("application/pdf");
             cf.setLocation("file://" +page.getFileName());
             dsPage.addContentFile(cf);
-
-
-            //            List<Reference> issueToReferences = issue.getAllToReferences();
-            //            int numberOfToReferences = issueToReferences.size();
-            //            log.debug("======= Issue has " + numberOfToReferences + " to references =======");
-            //            for (Reference reference : issueToReferences) {
-            //                String sourceId = reference.getSource().getIdentifier();
-            //                String targetId = reference.getTarget().getIdentifier();
-            //                log.debug(sourceId + " -> " + targetId);
-            //            }
-            //            log.debug("=====================");
-
-            //            dsPage.addReferenceFrom(issue, "logical_physical"); // equivalent
-
-            // TODO: uncomment this line
-            //            volume.addReferenceTo(dsPage, "logical_physical");
 
         } catch (TypeNotAllowedForParentException e) {
             // TODO Auto-generated catch block
@@ -668,18 +595,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         try {
             ProcessManager.saveProcess(process);
-            //            process.writeMetadataFile(fileformat);
 
         } catch (DAOException e) {
             String message = "Error while trying to save the process: " + e.getMessage();
             reportError(message);
             return null;
         }
-        //        } catch (WriteException | PreferencesException | IOException | SwapException e) {
-        //            // TODO Auto-generated catch block
-        //            e.printStackTrace();
-        //            return null;
-        //        }
 
         return process;
     }
