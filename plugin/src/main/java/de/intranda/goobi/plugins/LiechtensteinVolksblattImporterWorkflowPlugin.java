@@ -73,7 +73,9 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private List<ImportSet> importSets;
 
     @Getter
-    private List<AnchorMetadata> anchorMetadataList;
+    private List<ImportMetadata> anchorMetadataList;
+    @Getter
+    private List<ImportMetadata> volumeMetadataList;
 
     private PushContext pusher;
     @Getter
@@ -140,12 +142,21 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         }
 
         anchorMetadataList = new ArrayList<>();
+        volumeMetadataList = new ArrayList<>();
         List<HierarchicalConfiguration> mappings = ConfigPlugins.getPluginConfig(title).configurationsAt("metadata");
         for (HierarchicalConfiguration mapping : mappings) {
             String type = mapping.getString("[@type]", "");
             String value = mapping.getString("[@value]", "");
-            boolean person = mapping.getBoolean("[@person]", false);
-            anchorMetadataList.add(new AnchorMetadata(type, value, person));
+            boolean isPerson = mapping.getBoolean("[@person]", false);
+            boolean isAnchor = mapping.getBoolean("[@anchor]", true);
+            boolean isVolume = mapping.getBoolean("[@volume]", false);
+            ImportMetadata md = new ImportMetadata(type, value, isPerson);
+            if (isAnchor) {
+                anchorMetadataList.add(md);
+            }
+            if (isVolume) {
+                volumeMetadataList.add(md);
+            }
         }
 
         // write a log into the UI
@@ -406,17 +417,15 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             mdForPath.setValue("file:///");
             physical.addMetadata(mdForPath);
 
-            // add the logical basics
+            // add the logical basics to anchor
             DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(publicationType)); // publicationType is Newspaper
             dd.setLogicalDocStruct(logical);
+            createMetadataFields(prefs, logical, anchorMetadataList);
 
             // prepare the volume
             DocStruct volume = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_VOLUME_TYPE));
-            String volumeId = "Newspaper Volume " + page.getYear(); // TODO: change this
-            // NewspaperVolume should have a CatalogIDDigital that is different from the one of Newspaper
-            MetadataType catalogIdDigitalType = prefs.getMetadataTypeByName("CatalogIDDigital");
-            Metadata volumeIdMetadata = createMetadata(catalogIdDigitalType, volumeId, false);
-            volume.addMetadata(volumeIdMetadata);
+            List<ImportMetadata> volumeMetadataList = prepareVolumeMetadataList(page);
+            createMetadataFields(prefs, volume, volumeMetadataList);
 
             log.debug("adding DocStruct child: " + NEWSPAPER_VOLUME_TYPE);
             try {
@@ -428,6 +437,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 return null;
             }
 
+            // prepare a new issue
             DocStruct issue = createNewIssue(prefs, dd, page);
             if (issue == null) {
                 // TODO: error happened
@@ -446,9 +456,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // link page to issue
             addPageToIssue(prefs, dd, issue, page);
 
-            // create the metadata fields by reading the config (and get content from the content files of course)
-            createMetadataFields(prefs, logical, anchorMetadataList);
-
             return fileformat;
 
         } catch (PreferencesException | TypeNotAllowedForParentException | MetadataTypeNotAllowedException | IncompletePersonObjectException e) {
@@ -459,22 +466,44 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     }
 
+    private List<ImportMetadata> prepareVolumeMetadataList(NewspaperPage page) {
+        String year = page.getYear();
+        // NewspaperVolume should have a CatalogIDDigital that is different from the one of Newspaper
+        String volumeId = "Newspaper Volume " + year; // TODO: change this
+
+        List<ImportMetadata> volumeMetadataList = new ArrayList<>();
+        // add all configured volume metadata first
+        volumeMetadataList.addAll(this.volumeMetadataList);
+
+        // add default volume metadata
+        volumeMetadataList.add(new ImportMetadata("CatalogIDDigital", volumeId, false));
+        volumeMetadataList.add(new ImportMetadata("SubjectTopic", "zeitungen#livb", false));
+        volumeMetadataList.add(new ImportMetadata("Publikationstyp", "pt_zeitung", false));
+        volumeMetadataList.add(new ImportMetadata("TitleDocMain", "Liechtensteiner Volksblatt (" + year + ")", false));
+        volumeMetadataList.add(new ImportMetadata("CurrentNo", year, false));
+        volumeMetadataList.add(new ImportMetadata("Classification", "zeitungsherausgeber#livb", false));
+        volumeMetadataList.add(new ImportMetadata("PublicationYear", year, false));
+        volumeMetadataList.add(new ImportMetadata("ViewerInstance", "eli", false));
+
+        return volumeMetadataList;
+    }
+
     /**
      * create all metadata fields
      * 
      * @param prefs Prefs
      * @param ds DocStruct
-     * @param anchorMetadataList list of AnchorMetadata
+     * @param ImportMetadataList list of ImportMetadata
      */
-    private void createMetadataFields(Prefs prefs, DocStruct ds, List<AnchorMetadata> anchorMetadataList) {
-        for (AnchorMetadata anchorMetadata : anchorMetadataList) {
+    private void createMetadataFields(Prefs prefs, DocStruct ds, List<ImportMetadata> ImportMetadataList) {
+        for (ImportMetadata ImportMetadata : ImportMetadataList) {
             // prepare the MetadataType
-            String target = anchorMetadata.getType();
+            String target = ImportMetadata.getType();
             MetadataType targetType = prefs.getMetadataTypeByName(target);
-            String value = anchorMetadata.getValue();
+            String value = ImportMetadata.getValue();
             log.debug("targetType = " + targetType);
 
-            boolean isPerson = anchorMetadata.isPerson();
+            boolean isPerson = ImportMetadata.isPerson();
 
             try {
                 Metadata md = createMetadata(targetType, value, isPerson);
@@ -708,6 +737,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     @Data
     @AllArgsConstructor
     public class AnchorMetadata {
+        private String type;
+        private String value;
+        private boolean person;
+    }
+
+    @Data
+    @AllArgsConstructor
+    public class ImportMetadata {
         private String type;
         private String value;
         private boolean person;
