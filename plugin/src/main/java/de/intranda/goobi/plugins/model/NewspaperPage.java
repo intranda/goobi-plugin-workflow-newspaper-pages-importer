@@ -31,9 +31,14 @@ public class NewspaperPage {
         pageNumber = fileName.substring(0, 3);
     }
 
+    public String getDateEuropean() {
+        return day + "." + month + "." + year;
+    }
+
     public static String getDateFromFileName(String fileName) {
         Matcher matcher = DATE_PATTERN.matcher(fileName);
         return matcher.find() ? matcher.group() : "";
     }
+
 
 }

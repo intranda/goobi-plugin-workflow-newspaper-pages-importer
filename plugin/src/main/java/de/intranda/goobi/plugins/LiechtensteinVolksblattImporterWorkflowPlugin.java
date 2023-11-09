@@ -59,11 +59,22 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     private static final StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
+    private static final String NEWSPAPER_TYPE = "Newspaper";
     private static final String NEWSPAPER_VOLUME_TYPE = "NewspaperVolume";
     private static final String NEWSPAPER_ISSUE_TYPE = "NewspaperIssue";
 
     private static final String TITLE_DOC_MAIN_TYPE = "TitleDocMain";
+    private static final String SUBJECT_TOPIC_TYPE = "SubjectTopic";
+    private static final String PUBLICATION_TYPE_TYPE = "Publikationstyp";
+    private static final String CURRENT_NUMBER_TYPE = "CurrentNo";
+    private static final String CATALOG_ID_DIGITAL_TYPE = "CatalogIDDigital";
+    private static final String CLASSIFICATION_TYPE = "Classification";
+    private static final String PUBLICATION_YEAR_TYPE = "PublicationYear";
+    private static final String VIEWER_INSTANCE_TYPE = "ViewerInstance";
 
+    private static final String PART_NUMBER_TYPE = "PartNumber";
+
+    // set of dates of the issues that are already added
     private static final Set<String> ISSUES_SET = new HashSet<>();
 
     @Getter
@@ -90,7 +101,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private Queue<LogMessage> logQueue = new CircularFifoQueue<>(48);
     private String importFolder;
     private String workflow;
-    private String publicationType;
 
     private static final Comparator<NewspaperPage> byIssueDate = (NewspaperPage page1, NewspaperPage page2) -> {
         String date1 = page1.getDate();
@@ -127,7 +137,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         // read some main configuration
         importFolder = ConfigPlugins.getPluginConfig(title).getString("importFolder");
         workflow = ConfigPlugins.getPluginConfig(title).getString("workflow");
-        publicationType = ConfigPlugins.getPluginConfig(title).getString("publicationType");
 
         // read list of mapping configuration
         // TODO: remove the use of importSets
@@ -325,9 +334,9 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     }
 
     private DocStruct getIssueForPage(Prefs prefs, DigitalDocument dd, DocStruct volume, NewspaperPage page) throws TypeNotAllowedAsChildException {
-        String pageDate = page.getDate();
+        String pageDateEuropean = page.getDateEuropean();
 
-        if (!ISSUES_SET.contains(pageDate)) {
+        if (!ISSUES_SET.contains(pageDateEuropean)) {
             // issue does not exist yet, create a new one
             DocStruct issue = createNewIssue(prefs, dd, page);
             if (issue != null) {
@@ -339,14 +348,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         // issue already exists, go find it
         List<DocStruct> newspaperIssues = dd.getAllDocStructsByType(NEWSPAPER_ISSUE_TYPE);
-        log.debug("page date = " + pageDate);
         MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
         for (DocStruct issue : newspaperIssues) {
             // TODO: the following logic must be optimized for a large amount of issues
             String issueTitle = issue.getAllMetadataByType(titleType).get(0).getValue();
 
             log.debug("checking issue with title = " + issueTitle);
-            if (pageDate.equals(issueTitle)) {
+            if (pageDateEuropean.equals(issueTitle)) {
                 return issue;
             }
         }
@@ -418,7 +426,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             physical.addMetadata(mdForPath);
 
             // add the logical basics to anchor
-            DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(publicationType)); // publicationType is Newspaper
+            DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_TYPE));
             dd.setLogicalDocStruct(logical);
             createMetadataFields(prefs, logical, anchorMetadataList);
 
@@ -476,14 +484,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         volumeMetadataList.addAll(this.volumeMetadataList);
 
         // add default volume metadata
-        volumeMetadataList.add(new ImportMetadata("CatalogIDDigital", volumeId, false));
-        volumeMetadataList.add(new ImportMetadata("SubjectTopic", "zeitungen#livb", false));
-        volumeMetadataList.add(new ImportMetadata("Publikationstyp", "pt_zeitung", false));
-        volumeMetadataList.add(new ImportMetadata("TitleDocMain", "Liechtensteiner Volksblatt (" + year + ")", false));
-        volumeMetadataList.add(new ImportMetadata("CurrentNo", year, false));
-        volumeMetadataList.add(new ImportMetadata("Classification", "zeitungsherausgeber#livb", false));
-        volumeMetadataList.add(new ImportMetadata("PublicationYear", year, false));
-        volumeMetadataList.add(new ImportMetadata("ViewerInstance", "eli", false));
+        volumeMetadataList.add(new ImportMetadata(CATALOG_ID_DIGITAL_TYPE, volumeId, false));
+        volumeMetadataList.add(new ImportMetadata(SUBJECT_TOPIC_TYPE, "zeitungen#livb", false));
+        volumeMetadataList.add(new ImportMetadata(PUBLICATION_TYPE_TYPE, "pt_zeitung", false));
+        volumeMetadataList.add(new ImportMetadata(TITLE_DOC_MAIN_TYPE, "Liechtensteiner Volksblatt (" + year + ")", false));
+        volumeMetadataList.add(new ImportMetadata(CURRENT_NUMBER_TYPE, year, false));
+        volumeMetadataList.add(new ImportMetadata(CLASSIFICATION_TYPE, "zeitungsherausgeber#livb", false));
+        volumeMetadataList.add(new ImportMetadata(PUBLICATION_YEAR_TYPE, year, false));
+        volumeMetadataList.add(new ImportMetadata(VIEWER_INSTANCE_TYPE, "eli", false));
 
         return volumeMetadataList;
     }
@@ -557,17 +565,17 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         try {
             DocStruct issue = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_ISSUE_TYPE));
 
-            String targetTypeName = "TitleDocMainShort";
-            MetadataType targetType = prefs.getMetadataTypeByName(targetTypeName);
-            String value = "HELLO_world";
-            Metadata md = createMetadata(targetType, value, false);
-            issue.addMetadata(md);
-
             // TitleDocMain
             MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
-            String titleValue = page.getDate();
+            String titleValue = page.getDateEuropean();
             Metadata titleMetadata = createMetadata(titleType, titleValue, false);
             issue.addMetadata(titleMetadata);
+
+            // PartNumber
+            MetadataType partNumberType = prefs.getMetadataTypeByName(PART_NUMBER_TYPE);
+            String partNumberValue = page.getDate();
+            Metadata partNumberMetadata = createMetadata(partNumberType, partNumberValue, false);
+            issue.addMetadata(partNumberMetadata);
 
             ISSUES_SET.add(titleValue);
             log.debug("New issue created: " + titleValue);
