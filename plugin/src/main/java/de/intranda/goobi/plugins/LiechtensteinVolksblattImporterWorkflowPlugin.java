@@ -74,6 +74,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     private static final String PART_NUMBER_TYPE = "PartNumber";
 
+    private static final String CONTENT_FILE_LOCATION_PREFIX = "file://";
+
     // set of dates of the issues that are already added
     private static final Set<String> ISSUES_SET = new HashSet<>();
 
@@ -290,7 +292,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         // copy files into the media folder of the process
         try {
-            copyMediaFile(process, pdfFilePath);
+            copyFileToMasterFolder(process, pdfFilePath);
         } catch (IOException | SwapException | DAOException e) {
             String message = "Error while trying to copy files into the media folder: " + e.getMessage();
             reportError(message);
@@ -388,7 +390,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         // copy files into the media folder of the process
         try {
-            copyMediaFile(process, page.getFilePath());
+            copyFileToMasterFolder(process, page.getFilePath());
         } catch (IOException | SwapException | DAOException e) {
             String message = "Error while trying to copy files into the media folder: " + e.getMessage();
             reportError(message);
@@ -599,9 +601,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         DocStruct physical = dd.getPhysicalDocStruct();
         DocStruct volume = dd.getLogicalDocStruct().getAllChildren().get(0);
         DocStructType pageType = prefs.getDocStrctTypeByName("page");
-        String pagePhysNumber = page.getPageNumber();
-        //        String pageLogNumber = "S." + page.getPageNumber();
-        String pageLogNumber = page.getDate() + "_" + page.getPageNumber();
+        String pageLogNumber = "S." + String.valueOf(Integer.valueOf(page.getPageNumber()));
 
         try {
             DocStruct dsPage = dd.createDocStruct(pageType);
@@ -617,10 +617,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             volume.addReferenceTo(dsPage, "logical_physical");
             issue.addReferenceTo(dsPage, "logical_physical");
-            ContentFile cf = new ContentFile();
-            cf.setMimetype("application/pdf");
-            cf.setLocation("file://" +page.getFileName());
-            dsPage.addContentFile(cf);
+
+            ContentFile contentFileTiff = prepareContentFileForPage(page, "tiff");
+            dsPage.addContentFile(contentFileTiff);
+
+            ContentFile contentFileJpeg = prepareContentFileForPage(page, "jpg");
+            dsPage.addContentFile(contentFileJpeg);
+
 
         } catch (TypeNotAllowedForParentException e) {
             // TODO Auto-generated catch block
@@ -634,6 +637,41 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
+    }
+
+    private ContentFile prepareContentFileForPage(NewspaperPage page, String type) {
+        ContentFile cf = new ContentFile();
+        String pageName = page.getFileName();
+
+        String mimeType = "";
+        String locationSuffix = "";
+        switch (type.toLowerCase()) {
+            case "jpg":
+            case "jpeg":
+                mimeType = "image/jpeg";
+                locationSuffix = replaceFileExtension(pageName, "jpg");
+                break;
+            case "tif":
+            case "tiff":
+                mimeType = "image/tiff";
+                locationSuffix = replaceFileExtension(pageName, "tiff");
+                break;
+            case "pdf":
+                mimeType = "application/pdf";
+                locationSuffix = replaceFileExtension(pageName, "pdf");
+                break;
+            default:
+                // no need here since this is just a private method
+        }
+        cf.setMimetype(mimeType);
+        cf.setLocation(CONTENT_FILE_LOCATION_PREFIX + locationSuffix);
+
+        return cf;
+    }
+
+    private String replaceFileExtension(String fileName, String extension) {
+        int extensionIndex = fileName.lastIndexOf(".");
+        return fileName.substring(0, extensionIndex) + "." + extension;
     }
 
     private Process createAndSaveNewProcess(BeanHelper bhelp, Process template, String processName, Fileformat fileformat) {
@@ -657,24 +695,24 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     }
 
     /**
-     * copy the images from importFolder to media folders of the process
+     * copy the images from importFolder to master folders of the process
      * 
-     * @param process Process whose media folder is targeted
+     * @param process Process whose master folder is targeted
      * @throws IOException
      * @throws SwapException
      * @throws DAOException
      */
-    private void copyMediaFile(Process process, Path pdfFilePath) throws IOException, SwapException, DAOException {
+    private void copyFileToMasterFolder(Process process, Path pdfFilePath) throws IOException, SwapException, DAOException {
         // if media files are given, import these into the media folder of the process
         updateLog("Start copying media files");
         // prepare the directories
-        String mediaBase = process.getImagesTifDirectory(false);
-        storageProvider.createDirectories(Path.of(mediaBase));
+        String masterBase = process.getImagesOrigDirectory(false);
+        storageProvider.createDirectories(Path.of(masterBase));
         File file = pdfFilePath.toFile();
         if (file.canRead()) {
             String fileName = pdfFilePath.getFileName().toString();
             log.debug("fileName = " + fileName);
-            Path targetPath = Path.of(mediaBase, fileName);
+            Path targetPath = Path.of(masterBase, fileName);
             //            storageProvider.move(pdfFilePath, targetPath);
             storageProvider.copyFile(pdfFilePath, targetPath); // for the ease of testing
         }
