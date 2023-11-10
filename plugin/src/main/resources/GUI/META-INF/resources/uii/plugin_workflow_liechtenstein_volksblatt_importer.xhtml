@@ -100,15 +100,11 @@
                                                     </a>
                                         
                                                     <ul class="dropdown-menu">
-                                                        <ui:repeat
-                                                            var="importset"
-                                                            value="#{NavigationForm.workflowPlugin.importSets}">
-                                                            <li><button jsf:action="#{NavigationForm.workflowPlugin.startImport(importset)}"
-                                                                    aria-label="#{importset.title}" class="dropdown-item">
-                                                                    <h:outputText value="#{importset.title}" />
-                                                                </button>
-                                                            </li>
-                                                        </ui:repeat>
+                                                        <li><button jsf:action="#{NavigationForm.workflowPlugin.startImport()}"
+                                                                aria-label="Volksblatt" class="dropdown-item">
+                                                                <h:outputText value="Volksblatt" />
+                                                            </button>
+                                                        </li>
                                                     </ul>
                                                 </div>
 

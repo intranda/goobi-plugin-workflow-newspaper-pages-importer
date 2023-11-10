@@ -1,19 +1,15 @@
 <config_plugin>
+	<!-- configure here the additional metadata that shall be added to the anchor file or the volume part of the mets file -->
+	<metadata value="CHANGE_ME" type="TitleDocMain" anchor="true" volume="false" />
+	<metadata value="CHANGE_ME" type="CatalogIDSource" anchor="true" volume="false" />
+	<metadata value="CHANGE_ME" type="CatalogIDDigital" anchor="true" volume="false" />
 	
-	<!-- import set existing of excel files and pdf files -->
-	<importSet title="a" source="Source Field A" target="TitleDocMain"/>
-	<importSet title="b" source="Source Field B" target="CatalogIDSource"/>
-	<importSet title="c" source="Source Field C" target="CatalogIDDigital"/>
-	<importSet title="d" source="Source Field D" target="shelfmarksource"/>
-	<importSet title="e" source="Max Mustermann" target="Author" person="true"/>
+	<metadata value="CHANGE_ME" type="CurrentNoSorting" anchor="false" volume="true" />
 	
 	<!-- which folder to use as import source -->
 	<importFolder>/opt/digiverso/import/sample/</importFolder>
 	
 	<!-- which workflow to use -->
-	<workflow>Sample_Workflow</workflow>
-	
-	<!-- which publication type to use -->
-	<publicationType>Monograph</publicationType>
+	<workflow>Newspaper_workflow</workflow>
 	
 </config_plugin>

@@ -82,8 +82,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     @Getter
     private String title = "intranda_workflow_liechtenstein_volksblatt_importer";
     private long lastPush = System.currentTimeMillis();
-    @Getter
-    private List<ImportSet> importSets;
 
     @Getter
     private List<ImportMetadata> anchorMetadataList;
@@ -140,18 +138,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         importFolder = ConfigPlugins.getPluginConfig(title).getString("importFolder");
         workflow = ConfigPlugins.getPluginConfig(title).getString("workflow");
 
-        // read list of mapping configuration
-        // TODO: remove the use of importSets
-        importSets = new ArrayList<>();
-        List<HierarchicalConfiguration> importSetsMappings = ConfigPlugins.getPluginConfig(title).configurationsAt("importSet");
-        for (HierarchicalConfiguration node : importSetsMappings) {
-            String settitle = node.getString("[@title]", "-");
-            String source = node.getString("[@source]", "-");
-            String target = node.getString("[@target]", "-");
-            boolean person = node.getBoolean("[@person]", false);
-            importSets.add(new ImportSet(settitle, source, target, person));
-        }
-
         anchorMetadataList = new ArrayList<>();
         volumeMetadataList = new ArrayList<>();
         List<HierarchicalConfiguration> mappings = ConfigPlugins.getPluginConfig(title).configurationsAt("metadata");
@@ -183,11 +169,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     /**
      * main method to start the actual import
-     * 
-     * @param importset
      */
-    public void startImport(ImportSet importset) {
-        updateLog("Start import for: " + importset.getTitle());
+    public void startImport() {
         progress = 0;
         BeanHelper bhelp = new BeanHelper();
 
@@ -258,11 +241,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return processExists ? tryUpdateOldProcess(existingProcess, page) : tryCreateAndSaveNewProcess(bhelp, processName, page);
     }
 
-    //    private boolean checkExistenceOfProcess(String processName) {
-    //        log.debug("Counting number of processes for " + processName);
-    //        return ProcessManager.getNumberOfProcessesWithTitle(processName) != 0;
-    //    }
-
     private Process getProcessByName(String processName) {
         log.debug("Trying to retrieve the process if it exists.");
         // null will be returned if no such process exists
@@ -272,17 +250,19 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private boolean tryUpdateOldProcess(Process process, NewspaperPage page) {
         log.debug("Updating process: " + process.getTitel());
         Path pdfFilePath = page.getFilePath();
-        // TODO: metadata
         try {
             updateMetadataOfProcess(process, page);
+
         } catch (ReadException | IOException | SwapException e1) {
-            // TODO Auto-generated catch block
-            // read Fileformat
+            // read Fileformat error
+            String message = "Failed to read the fileformat.";
+            reportError(message);
             e1.printStackTrace();
 
         } catch (PreferencesException e) {
-            // TODO Auto-generated catch block
-            // DigitalDocument
+            // DigitalDocument error
+            String message = "Failed to get the digital document.";
+            reportError(message);
             e.printStackTrace();
 
         } catch (Exception e) {
@@ -318,7 +298,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             DocStruct issue = getIssueForPage(prefs, dd, volume, page);
             if (issue == null) {
-                // TODO: error happened
+                // error happened
                 return;
             }
 
@@ -342,7 +322,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // issue does not exist yet, create a new one
             DocStruct issue = createNewIssue(prefs, dd, page);
             if (issue != null) {
-                log.debug("Adding new issue to the volume.");
                 volume.addChild(issue);
             }
             return issue;
@@ -355,7 +334,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // TODO: the following logic must be optimized for a large amount of issues
             String issueTitle = issue.getAllMetadataByType(titleType).get(0).getValue();
 
-            log.debug("checking issue with title = " + issueTitle);
             if (pageDateEuropean.equals(issueTitle)) {
                 return issue;
             }
@@ -410,6 +388,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * 
      * @param template Process template
      * @param processName title of the new process
+     * @param page NewspaperPage
      * @return Fileformat
      */
     private Fileformat prepareFileformatForNewProcess(Process template, String processName, NewspaperPage page) {
@@ -442,7 +421,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 logical.addChild(volume);
 
             } catch (TypeNotAllowedAsChildException e) {
-                // TODO Auto-generated catch block
+                String message = "Failed to add volume.";
+                reportError(message);
                 e.printStackTrace();
                 return null;
             }
@@ -450,7 +430,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // prepare a new issue
             DocStruct issue = createNewIssue(prefs, dd, page);
             if (issue == null) {
-                // TODO: error happened
+                // error happened
                 return null;
             }
 
@@ -458,7 +438,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 volume.addChild(issue);
 
             } catch (TypeNotAllowedAsChildException e) {
-                // TODO Auto-generated catch block
+                String message = "Failed to add the issue '" + page.getDate() + "' to volume.";
+                reportError(message);
                 e.printStackTrace();
                 return null;
             }
@@ -511,7 +492,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             String target = ImportMetadata.getType();
             MetadataType targetType = prefs.getMetadataTypeByName(target);
             String value = ImportMetadata.getValue();
-            log.debug("targetType = " + targetType);
 
             boolean isPerson = ImportMetadata.isPerson();
 
@@ -584,15 +564,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             return issue;
 
-        } catch (TypeNotAllowedForParentException e) {
-            // TODO Auto-generated catch block
+        } catch (TypeNotAllowedForParentException | MetadataTypeNotAllowedException e) {
+            String message = "Failed to create a new issue for " + page.getDate();
+            reportError(message);
             e.printStackTrace();
             return null;
 
-        } catch (MetadataTypeNotAllowedException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            return null;
         }
     }
 
@@ -625,17 +602,11 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             dsPage.addContentFile(contentFileJpeg);
 
 
-        } catch (TypeNotAllowedForParentException e) {
-            // TODO Auto-generated catch block
+        } catch (TypeNotAllowedForParentException | TypeNotAllowedAsChildException | MetadataTypeNotAllowedException e) {
+            String message = "Failed to add page '" + page.getFileName() + "' to issue.";
+            reportError(message);
             e.printStackTrace();
 
-        } catch (TypeNotAllowedAsChildException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-
-        } catch (MetadataTypeNotAllowedException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
         }
     }
 
@@ -704,7 +675,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      */
     private void copyFileToMasterFolder(Process process, Path pdfFilePath) throws IOException, SwapException, DAOException {
         // if media files are given, import these into the media folder of the process
-        updateLog("Start copying media files");
+        updateLog("Start copying pdf files to the master folder");
         // prepare the directories
         String masterBase = process.getImagesOrigDirectory(false);
         storageProvider.createDirectories(Path.of(masterBase));
@@ -713,8 +684,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             String fileName = pdfFilePath.getFileName().toString();
             log.debug("fileName = " + fileName);
             Path targetPath = Path.of(masterBase, fileName);
-            //            storageProvider.move(pdfFilePath, targetPath);
-            storageProvider.copyFile(pdfFilePath, targetPath); // for the ease of testing
+            storageProvider.move(pdfFilePath, targetPath); // Should we make this configurable?
+            //            storageProvider.copyFile(pdfFilePath, targetPath); // for the ease of testing
         }
     }
 
@@ -769,15 +740,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             lastPush = System.currentTimeMillis();
             pusher.send("update");
         }
-    }
-
-    @Data
-    @AllArgsConstructor
-    public class ImportSet {
-        private String title;
-        private String source;
-        private String target;
-        private boolean person;
     }
 
     @Data
