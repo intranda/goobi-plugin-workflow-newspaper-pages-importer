@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.collections4.queue.CircularFifoQueue;
 import org.apache.commons.configuration.HierarchicalConfiguration;
+import org.apache.commons.configuration.XMLConfiguration;
 import org.apache.commons.lang3.StringUtils;
 import org.goobi.beans.Process;
 import org.goobi.beans.Step;
@@ -96,6 +97,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private String importFolder;
     private String workflow;
 
+    private boolean deleteFromSource;
+
     private static final Comparator<NewspaperPage> byIssueDate = (NewspaperPage page1, NewspaperPage page2) -> {
         String date1 = page1.getDate();
         String date2 = page2.getDate();
@@ -129,12 +132,15 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         updateLog("Start reading the configuration");
 
         // read some main configuration
-        importFolder = ConfigPlugins.getPluginConfig(title).getString("importFolder");
-        workflow = ConfigPlugins.getPluginConfig(title).getString("workflow");
+        XMLConfiguration config = ConfigPlugins.getPluginConfig(title);
+        importFolder = config.getString("importFolder");
+        workflow = config.getString("workflow");
+        deleteFromSource = config.getBoolean("deleteFromSource", false);
+        log.debug("deleteFromSource = " + deleteFromSource);
 
         anchorMetadataList = new ArrayList<>();
         volumeMetadataList = new ArrayList<>();
-        List<HierarchicalConfiguration> mappings = ConfigPlugins.getPluginConfig(title).configurationsAt("metadata");
+        List<HierarchicalConfiguration> mappings = config.configurationsAt("metadata");
         for (HierarchicalConfiguration mapping : mappings) {
             String type = mapping.getString("[@type]", "");
             String value = mapping.getString("[@value]", "");
@@ -207,6 +213,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 run = false;
                 Thread.sleep(2000);
                 updateLog("Import completed.");
+
             } catch (InterruptedException e) {
                 Helper.setFehlerMeldung("Error while trying to execute the import: " + e.getMessage());
                 log.error("Error while trying to execute the import", e);
@@ -717,8 +724,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             String fileName = pdfFilePath.getFileName().toString();
             log.debug("fileName = " + fileName);
             Path targetPath = Path.of(masterBase, fileName);
-            //            storageProvider.move(pdfFilePath, targetPath); // Should we make this configurable?
-            storageProvider.copyFile(pdfFilePath, targetPath); // for the ease of testing
+
+            if (deleteFromSource) {
+                storageProvider.move(pdfFilePath, targetPath);
+            } else {
+                storageProvider.copyFile(pdfFilePath, targetPath);
+            }
         }
     }
 
