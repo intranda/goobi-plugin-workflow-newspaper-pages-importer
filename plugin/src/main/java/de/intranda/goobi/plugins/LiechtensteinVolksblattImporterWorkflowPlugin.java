@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.collections4.queue.CircularFifoQueue;
 import org.apache.commons.configuration.HierarchicalConfiguration;
+import org.apache.commons.lang3.StringUtils;
 import org.goobi.beans.Process;
 import org.goobi.beans.Step;
 import org.goobi.production.enums.PluginType;
@@ -64,13 +65,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private static final String NEWSPAPER_ISSUE_TYPE = "NewspaperIssue";
 
     private static final String TITLE_DOC_MAIN_TYPE = "TitleDocMain";
-    private static final String SUBJECT_TOPIC_TYPE = "SubjectTopic";
-    private static final String PUBLICATION_TYPE_TYPE = "Publikationstyp";
-    private static final String CURRENT_NUMBER_TYPE = "CurrentNo";
-    private static final String CATALOG_ID_DIGITAL_TYPE = "CatalogIDDigital";
-    private static final String CLASSIFICATION_TYPE = "Classification";
-    private static final String PUBLICATION_YEAR_TYPE = "PublicationYear";
-    private static final String VIEWER_INSTANCE_TYPE = "ViewerInstance";
 
     private static final String PART_NUMBER_TYPE = "PartNumber";
 
@@ -144,10 +138,11 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         for (HierarchicalConfiguration mapping : mappings) {
             String type = mapping.getString("[@type]", "");
             String value = mapping.getString("[@value]", "");
+            String variable = mapping.getString("[@var]", "");
             boolean isPerson = mapping.getBoolean("[@person]", false);
-            boolean isAnchor = mapping.getBoolean("[@anchor]", true);
+            boolean isAnchor = mapping.getBoolean("[@anchor]", false);
             boolean isVolume = mapping.getBoolean("[@volume]", false);
-            ImportMetadata md = new ImportMetadata(type, value, isPerson);
+            ImportMetadata md = new ImportMetadata(type, value, variable, isPerson);
             if (isAnchor) {
                 anchorMetadataList.add(md);
             }
@@ -458,25 +453,63 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     }
 
     private List<ImportMetadata> prepareVolumeMetadataList(NewspaperPage page) {
-        String year = page.getYear();
         // NewspaperVolume should have a CatalogIDDigital that is different from the one of Newspaper
-        String volumeId = "Newspaper Volume " + year; // TODO: change this
 
         List<ImportMetadata> volumeMetadataList = new ArrayList<>();
-        // add all configured volume metadata first
-        volumeMetadataList.addAll(this.volumeMetadataList);
 
-        // add default volume metadata
-        volumeMetadataList.add(new ImportMetadata(CATALOG_ID_DIGITAL_TYPE, volumeId, false));
-        volumeMetadataList.add(new ImportMetadata(SUBJECT_TOPIC_TYPE, "zeitungen#livb", false));
-        volumeMetadataList.add(new ImportMetadata(PUBLICATION_TYPE_TYPE, "pt_zeitung", false));
-        volumeMetadataList.add(new ImportMetadata(TITLE_DOC_MAIN_TYPE, "Liechtensteiner Volksblatt (" + year + ")", false));
-        volumeMetadataList.add(new ImportMetadata(CURRENT_NUMBER_TYPE, year, false));
-        volumeMetadataList.add(new ImportMetadata(CLASSIFICATION_TYPE, "zeitungsherausgeber#livb", false));
-        volumeMetadataList.add(new ImportMetadata(PUBLICATION_YEAR_TYPE, year, false));
-        volumeMetadataList.add(new ImportMetadata(VIEWER_INSTANCE_TYPE, "eli", false));
+        for (ImportMetadata md : this.volumeMetadataList) {
+            // replace variables if configured and used
+            ImportMetadata mdToAdd = getImportMetadataWithVariableReplaced(md, page);
+            volumeMetadataList.add(mdToAdd);
+        }
 
         return volumeMetadataList;
+    }
+
+    private ImportMetadata getImportMetadataWithVariableReplaced(ImportMetadata md, NewspaperPage page) {
+        String variable = md.getVariable();
+        if (StringUtils.isBlank(variable)) {
+            // no variable configured
+            return md;
+        }
+        
+        String variableWrapped = getStringWrapped(variable, "_");
+        String metadataValue = md.getValue();
+        if (!metadataValue.contains(variableWrapped)) {
+            // no such variable in use, no replacement needed
+            log.debug("metadataValue '" + metadataValue + " does not contain variableWrapped '" + variableWrapped + "'");
+            return md;
+        }
+        
+        String variableValue = getVariableValue(variable, page);
+        String newMetadataValue = metadataValue.replace(variableWrapped, variableValue);
+        return new ImportMetadata(md.getType(), newMetadataValue, "", md.isPerson());
+    }
+
+    private String getStringWrapped(String s, String wrapper) {
+        return getStringWrapped(s, wrapper, wrapper);
+    }
+
+    private String getStringWrapped(String s, String wrapperLeft, String wrapperRight) {
+        return wrapperLeft + s + wrapperRight;
+    }
+
+    private String getVariableValue(String variable, NewspaperPage page) {
+        switch (variable.toLowerCase()) {
+            case "year":
+                return page.getYear();
+            case "month":
+                return page.getMonth();
+            case "day":
+                return page.getDay();
+            case "date":
+                return page.getDate();
+            case "page":
+                return page.getPageNumber();
+            default:
+                // unknown variable
+                return variable;
+        }
     }
 
     /**
@@ -684,8 +717,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             String fileName = pdfFilePath.getFileName().toString();
             log.debug("fileName = " + fileName);
             Path targetPath = Path.of(masterBase, fileName);
-            storageProvider.move(pdfFilePath, targetPath); // Should we make this configurable?
-            //            storageProvider.copyFile(pdfFilePath, targetPath); // for the ease of testing
+            //            storageProvider.move(pdfFilePath, targetPath); // Should we make this configurable?
+            storageProvider.copyFile(pdfFilePath, targetPath); // for the ease of testing
         }
     }
 
@@ -744,17 +777,10 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     @Data
     @AllArgsConstructor
-    public class AnchorMetadata {
-        private String type;
-        private String value;
-        private boolean person;
-    }
-
-    @Data
-    @AllArgsConstructor
     public class ImportMetadata {
         private String type;
         private String value;
+        private String variable;
         private boolean person;
     }
 
