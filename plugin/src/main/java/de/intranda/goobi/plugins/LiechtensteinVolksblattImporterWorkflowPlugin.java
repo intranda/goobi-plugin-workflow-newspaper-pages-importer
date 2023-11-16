@@ -842,8 +842,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @throws DAOException
      */
     private void copyFileToMasterFolder(Process process, Path filePath) throws IOException, SwapException, DAOException {
-        // if media files are given, import these into the media folder of the process
-        updateLog("Start copying files to the master folder");
         // prepare the directories
         String masterBase = process.getImagesOrigDirectory(false);
         storageProvider.createDirectories(Path.of(masterBase));
