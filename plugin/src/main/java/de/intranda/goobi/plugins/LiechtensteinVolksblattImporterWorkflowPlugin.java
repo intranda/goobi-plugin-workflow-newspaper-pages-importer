@@ -78,8 +78,10 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private String title = "intranda_workflow_liechtenstein_volksblatt_importer";
     private long lastPush = System.currentTimeMillis();
 
+    // list of metadata that shall be added to the anchor file
     @Getter
     private List<ImportMetadata> anchorMetadataList;
+    // list of metadata that shall be added to the volume part of the mets file
     @Getter
     private List<ImportMetadata> volumeMetadataList;
 
@@ -94,9 +96,11 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     int itemsTotal = 0;
     @Getter
     private Queue<LogMessage> logQueue = new CircularFifoQueue<>(48);
+    // folder containing images to import
     private String importFolder;
+    // name of the workflow template that shall be used
     private String workflow;
-
+    // true if the images should be deleted from the import folder once they are imported, false otherwise
     private boolean deleteFromSource;
 
     private static final Comparator<NewspaperPage> byIssueDate = (NewspaperPage page1, NewspaperPage page2) -> {
@@ -119,7 +123,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * Constructor
      */
     public LiechtensteinVolksblattImporterWorkflowPlugin() {
-        log.info("Sample importer workflow plugin started");
+        log.info("Liechteinstein Volksblatt importer workflow plugin started");
 
         // read important configuration first
         readConfiguration();
@@ -136,7 +140,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         importFolder = config.getString("importFolder");
         workflow = config.getString("workflow");
         deleteFromSource = config.getBoolean("deleteFromSource", false);
-        log.debug("deleteFromSource = " + deleteFromSource);
 
         anchorMetadataList = new ArrayList<>();
         volumeMetadataList = new ArrayList<>();
@@ -224,6 +227,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         new Thread(runnable).start();
     }
 
+    /**
+     * get a list of NewspaperPage that are sorted by their issue dates
+     * 
+     * @param folder path string of the folder that contains the images to import
+     * @return a list of NewspaperPage that are sorted by their issue dates
+     */
     private List<NewspaperPage> getSortedNewspaperPages(String folder) {
         return storageProvider.listFiles(folder)
                 .stream()
@@ -232,6 +241,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 .collect(Collectors.toList());
     }
 
+    /**
+     * add the input NewspaperPage to a Goobi process, where process name will be the value of year read from the page's name, and if the aimed
+     * process does not exist yet, a new one will be created.
+     * 
+     * @param bhelp BeanHelper
+     * @param page NewspaperPage
+     * @return true if the input page is successfully added to a Goobi process, false otherwise
+     */
     private boolean addPdfFileToProcess(BeanHelper bhelp, NewspaperPage page) {
         String processName = page.getYear();
         updateLog("Start importing: " + processName, 1);
@@ -243,12 +260,25 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return processExists ? tryUpdateOldProcess(existingProcess, page) : tryCreateAndSaveNewProcess(bhelp, processName, page);
     }
 
+    /**
+     * try to get a possibly existing process by its name
+     * 
+     * @param processName name of the process that is aimed
+     * @return the process named so if there exists one such, or null if not
+     */
     private Process getProcessByName(String processName) {
         log.debug("Trying to retrieve the process if it exists.");
         // null will be returned if no such process exists
         return ProcessManager.getProcessByTitle(processName);
     }
 
+    /**
+     * try to add the input NewspaperPage to an old process by updating it
+     * 
+     * @param process Goobi process that shall be updated
+     * @param page NewspaperPage that shall be added
+     * @return true if the input NewspaperPage is successfully added into the old process, false otherwise
+     */
     private boolean tryUpdateOldProcess(Process process, NewspaperPage page) {
         log.debug("Updating process: " + process.getTitel());
         Path pdfFilePath = page.getFilePath();
@@ -260,30 +290,43 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             String message = "Failed to read the fileformat.";
             reportError(message);
             e1.printStackTrace();
+            return false;
 
         } catch (PreferencesException e) {
             // DigitalDocument error
             String message = "Failed to get the digital document.";
             reportError(message);
             e.printStackTrace();
+            return false;
 
         } catch (Exception e) {
             log.debug("Unknown exception caught while updating process: " + process.getTitel());
             e.printStackTrace();
+            return false;
         }
 
-        // copy files into the media folder of the process
+        // copy files into the master folder of the process
         try {
             copyFileToMasterFolder(process, pdfFilePath);
+            return true;
+
         } catch (IOException | SwapException | DAOException e) {
             String message = "Error while trying to copy files into the media folder: " + e.getMessage();
             reportError(message);
             return false;
         }
-
-        return true;
     }
 
+    /**
+     * update the metadata of the input process with metadata of the input NewspaperPage
+     * 
+     * @param process Goobi process whose metadata shall be updated
+     * @param page NewspaperPage whose metadata shall be added into the process
+     * @throws ReadException
+     * @throws IOException
+     * @throws SwapException
+     * @throws PreferencesException
+     */
     private void updateMetadataOfProcess(Process process, NewspaperPage page) throws ReadException, IOException, SwapException, PreferencesException {
         log.debug("updating metadata of process: " + process.getTitel());
         try {
@@ -317,6 +360,17 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     }
 
+    /**
+     * get the proper issue that the input NewspaperPage belongs to
+     * 
+     * @param prefs Prefs
+     * @param dd DigitalDocument
+     * @param volume DocStruct of type NewspaperVolume
+     * @param page NewspaperPage
+     * @return an existing DocStruct of type NewspaperIssue if one such already exists for the input NewspaperPage, otherwise a new one will be
+     *         created and added to the DigitalDocument.
+     * @throws TypeNotAllowedAsChildException
+     */
     private DocStruct getIssueForPage(Prefs prefs, DigitalDocument dd, DocStruct volume, NewspaperPage page) throws TypeNotAllowedAsChildException {
         String pageDateEuropean = page.getDateEuropean();
 
@@ -459,8 +513,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     }
 
+    /**
+     * prepare a list of ImportMetadata that shall be added to the volume part of the METS file
+     * 
+     * @param page NewspaperPage
+     * @return a list of ImportMetadata that shall be added to the volume part of the METS file
+     */
     private List<ImportMetadata> prepareVolumeMetadataList(NewspaperPage page) {
-        // NewspaperVolume should have a CatalogIDDigital that is different from the one of Newspaper
+        // Remark: NewspaperVolume should have a CatalogIDDigital that is different from the one of Newspaper
 
         List<ImportMetadata> volumeMetadataList = new ArrayList<>();
 
@@ -473,6 +533,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return volumeMetadataList;
     }
 
+    /**
+     * get an ImportMetadata object where the occurrences of its predefined variable in its predefined value are all replaced properly
+     * 
+     * @param md ImportMetadata
+     * @param page NewspaperPage
+     * @return the input ImportMetadata itself if no such replacement is actually needed, otherwise a new one whose value is the original one with its
+     *         variable properly replaced
+     */
     private ImportMetadata getImportMetadataWithVariableReplaced(ImportMetadata md, NewspaperPage page) {
         String variable = md.getVariable();
         if (StringUtils.isBlank(variable)) {
@@ -493,14 +561,36 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return new ImportMetadata(md.getType(), newMetadataValue, "", md.isPerson());
     }
 
+    /**
+     * get a string wrapped with the same wrapper from both sides
+     * 
+     * @param s the string that shall be wrapped
+     * @param wrapper wrapper string that shall be added to both sides
+     * @return the string wrapped in the wrapper from both sides
+     */
     private String getStringWrapped(String s, String wrapper) {
         return getStringWrapped(s, wrapper, wrapper);
     }
 
+    /**
+     * get a string wrapped with possibly different wrapper strings from both sides
+     * 
+     * @param s the string that shall be wrapped
+     * @param wrapperLeft wrapper string that shall be added to the left
+     * @param wrapperRight wrapper string that shall be added to the right
+     * @return the string wrapped with the input two wrappers
+     */
     private String getStringWrapped(String s, String wrapperLeft, String wrapperRight) {
         return wrapperLeft + s + wrapperRight;
     }
 
+    /**
+     * get the value of the variable from the input NewspaperPage
+     * 
+     * @param variable name of the variable
+     * @param page NewspaperPage from which the value is to be fetched
+     * @return the value of the variable if it is recognized, or the variable itself otherwise
+     */
     private String getVariableValue(String variable, NewspaperPage page) {
         switch (variable.toLowerCase()) {
             case "year":
@@ -520,7 +610,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     }
 
     /**
-     * create all metadata fields
+     * create all metadata fields and add them to the input DocStruct
      * 
      * @param prefs Prefs
      * @param ds DocStruct
@@ -581,6 +671,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return md;
     }
 
+    /**
+     * create a new DocStruct of type NewspaperIssue
+     * 
+     * @param prefs Prefs
+     * @param dd DigitalDocument
+     * @param page NewspaperPage
+     * @return the new DocStruct of type NewspaperIssue if it is successfully created, or null otherwise
+     */
     private DocStruct createNewIssue(Prefs prefs, DigitalDocument dd, NewspaperPage page) {
         log.debug("Creating new issue from NewspaperPage: " + page.getFileName());
 
@@ -613,6 +711,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         }
     }
 
+    /**
+     * add a NewspaperPage to an issue
+     * 
+     * @param prefs Prefs
+     * @param dd DigitalDocument
+     * @param issue DocStruct of type NewspaperIssue
+     * @param page NewspaperPage that shall be added to the input issue
+     */
     private void addPageToIssue(Prefs prefs, DigitalDocument dd, DocStruct issue, NewspaperPage page) {
         log.debug("adding new page '" + page.getPageNumber() + "' to issue '" + page.getDate());
         DocStruct physical = dd.getPhysicalDocStruct();
@@ -650,6 +756,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         }
     }
 
+    /**
+     * prepare the ContentFile for the input NewspaperPage
+     * 
+     * @param page NwespaperPage
+     * @param type type of the page file
+     * @return the ContentFile for the input NewspaperPage
+     */
     private ContentFile prepareContentFileForPage(NewspaperPage page, String type) {
         ContentFile cf = new ContentFile();
         String pageName = page.getFileName();
@@ -680,11 +793,27 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         return cf;
     }
 
+    /**
+     * replace the file extension of the input fileName with the input new extension
+     * 
+     * @param fileName name of the file whose extension is to be replaced
+     * @param extension new extension
+     * @return the file name with its extension replaced by the new one
+     */
     private String replaceFileExtension(String fileName, String extension) {
         int extensionIndex = fileName.lastIndexOf(".");
         return fileName.substring(0, extensionIndex) + "." + extension;
     }
 
+    /**
+     * create and save a new Goobi process
+     * 
+     * @param bhelp BeanHelper
+     * @param template Goobi process template that is to be used
+     * @param processName name of the new process
+     * @param fileformat Fileformat
+     * @return the new Goobi process if it is successfully created and saved, otherwise null
+     */
     private Process createAndSaveNewProcess(BeanHelper bhelp, Process template, String processName, Fileformat fileformat) {
         // save the process
         Process process = bhelp.createAndSaveNewProcess(template, processName, fileformat);
@@ -706,9 +835,10 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     }
 
     /**
-     * copy the images from importFolder to master folders of the process
+     * COPY (or MOVE if <deleteFromSource> is configured true) the images from importFolder to master folders of the process
      * 
      * @param process Process whose master folder is targeted
+     * @param pdfFilePath path of the PDF file
      * @throws IOException
      * @throws SwapException
      * @throws DAOException
