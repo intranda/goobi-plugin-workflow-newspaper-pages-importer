@@ -80,10 +80,10 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     // list of metadata that shall be added to the anchor file
     @Getter
-    private List<ImportMetadata> anchorMetadataList;
+    private transient List<ImportMetadata> anchorMetadataList;
     // list of metadata that shall be added to the volume part of the mets file
     @Getter
-    private List<ImportMetadata> volumeMetadataList;
+    private transient List<ImportMetadata> volumeMetadataList;
 
     private PushContext pusher;
     @Getter
@@ -95,7 +95,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     @Getter
     int itemsTotal = 0;
     @Getter
-    private Queue<LogMessage> logQueue = new CircularFifoQueue<>(48);
+    private transient Queue<LogMessage> logQueue = new CircularFifoQueue<>(48);
     // folder containing images to import
     private String importFolder;
     // name of the workflow template that shall be used
@@ -334,8 +334,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // read metadata
             Fileformat fileformat = process.readMetadataFile();
 
-            log.debug("fileformat is " + (fileformat == null ? "" : "NOT") + " null");
-
             // update metadata
             DigitalDocument dd = fileformat.getDigitalDocument();
             DocStruct logical = dd.getLogicalDocStruct();
@@ -409,7 +407,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         // get the correct workflow to use
         Process template = ProcessManager.getProcessByExactTitle(workflow);
         // prepare the Fileformat based on the template Process
-        Fileformat fileformat = prepareFileformatForNewProcess(template, processName, page);
+        Fileformat fileformat = prepareFileformatForNewProcess(template, page);
         if (fileformat == null) {
             // error happened during the preparation
             return false;
@@ -443,11 +441,10 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * prepare the Fileformat for creating the new process
      * 
      * @param template Process template
-     * @param processName title of the new process
      * @param page NewspaperPage
      * @return Fileformat
      */
-    private Fileformat prepareFileformatForNewProcess(Process template, String processName, NewspaperPage page) {
+    private Fileformat prepareFileformatForNewProcess(Process template, NewspaperPage page) {
         Prefs prefs = template.getRegelsatz().getPreferences();
 
         try {
@@ -469,8 +466,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             // prepare the volume
             DocStruct volume = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_VOLUME_TYPE));
-            List<ImportMetadata> volumeMetadataList = prepareVolumeMetadataList(page);
-            createMetadataFields(prefs, volume, volumeMetadataList);
+            List<ImportMetadata> volumeMetadataListFinal = prepareVolumeMetadataList(page);
+            createMetadataFields(prefs, volume, volumeMetadataListFinal);
 
             log.debug("adding DocStruct child: " + NEWSPAPER_VOLUME_TYPE);
             try {
@@ -522,15 +519,15 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private List<ImportMetadata> prepareVolumeMetadataList(NewspaperPage page) {
         // Remark: NewspaperVolume should have a CatalogIDDigital that is different from the one of Newspaper
 
-        List<ImportMetadata> volumeMetadataList = new ArrayList<>();
+        List<ImportMetadata> volumeMetadataListFinal = new ArrayList<>();
 
         for (ImportMetadata md : this.volumeMetadataList) {
             // replace variables if configured and used
             ImportMetadata mdToAdd = getImportMetadataWithVariableReplaced(md, page);
-            volumeMetadataList.add(mdToAdd);
+            volumeMetadataListFinal.add(mdToAdd);
         }
 
-        return volumeMetadataList;
+        return volumeMetadataListFinal;
     }
 
     /**
@@ -614,16 +611,16 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * 
      * @param prefs Prefs
      * @param ds DocStruct
-     * @param ImportMetadataList list of ImportMetadata
+     * @param importMetadataList list of ImportMetadata
      */
-    private void createMetadataFields(Prefs prefs, DocStruct ds, List<ImportMetadata> ImportMetadataList) {
-        for (ImportMetadata ImportMetadata : ImportMetadataList) {
+    private void createMetadataFields(Prefs prefs, DocStruct ds, List<ImportMetadata> importMetadataList) {
+        for (ImportMetadata importMetadata : importMetadataList) {
             // prepare the MetadataType
-            String target = ImportMetadata.getType();
+            String target = importMetadata.getType();
             MetadataType targetType = prefs.getMetadataTypeByName(target);
-            String value = ImportMetadata.getValue();
+            String value = importMetadata.getValue();
 
-            boolean isPerson = ImportMetadata.isPerson();
+            boolean isPerson = importMetadata.isPerson();
 
             try {
                 Metadata md = createMetadata(targetType, value, isPerson);
@@ -724,7 +721,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         DocStruct physical = dd.getPhysicalDocStruct();
         DocStruct volume = dd.getLogicalDocStruct().getAllChildren().get(0);
         DocStructType pageType = prefs.getDocStrctTypeByName("page");
-        String pageLogNumber = "S." + String.valueOf(Integer.valueOf(page.getPageNumber()));
+        String pageLogNumber = "S." + Integer.valueOf(page.getPageNumber());
 
         try {
             DocStruct dsPage = dd.createDocStruct(pageType);
