@@ -200,7 +200,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                         break;
                     }
 
-                    boolean success = addPdfFileToProcess(bhelp, page);
+                    boolean success = addFileToProcess(bhelp, page);
                     if (!success) {
                         String message = "Error while creating a process during the import";
                         reportError(message);
@@ -249,7 +249,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @param page NewspaperPage
      * @return true if the input page is successfully added to a Goobi process, false otherwise
      */
-    private boolean addPdfFileToProcess(BeanHelper bhelp, NewspaperPage page) {
+    private boolean addFileToProcess(BeanHelper bhelp, NewspaperPage page) {
         String processName = page.getYear();
         updateLog("Start importing: " + processName, 1);
 
@@ -281,7 +281,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      */
     private boolean tryUpdateOldProcess(Process process, NewspaperPage page) {
         log.debug("Updating process: " + process.getTitel());
-        Path pdfFilePath = page.getFilePath();
+        Path filePath = page.getFilePath();
         try {
             updateMetadataOfProcess(process, page);
 
@@ -307,7 +307,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         // copy files into the master folder of the process
         try {
-            copyFileToMasterFolder(process, pdfFilePath);
+            copyFileToMasterFolder(process, filePath);
             return true;
 
         } catch (IOException | SwapException | DAOException e) {
@@ -429,8 +429,9 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             return false;
         }
 
-        // start open automatic tasks
-        startOpenAutomaticTasks(process);
+        // TODO: find a proper way to start open automatic tasks only after all issues belonging to this process are added
+        // start open automatic tasks 
+        //        startOpenAutomaticTasks(process); // NOSONAR
 
         updateLog("Process successfully created with ID: " + process.getId());
 
@@ -835,27 +836,26 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * COPY (or MOVE if <deleteFromSource> is configured true) the images from importFolder to master folders of the process
      * 
      * @param process Process whose master folder is targeted
-     * @param pdfFilePath path of the PDF file
+     * @param filePath path of the file
      * @throws IOException
      * @throws SwapException
      * @throws DAOException
      */
-    private void copyFileToMasterFolder(Process process, Path pdfFilePath) throws IOException, SwapException, DAOException {
+    private void copyFileToMasterFolder(Process process, Path filePath) throws IOException, SwapException, DAOException {
         // if media files are given, import these into the media folder of the process
-        updateLog("Start copying pdf files to the master folder");
+        updateLog("Start copying files to the master folder");
         // prepare the directories
         String masterBase = process.getImagesOrigDirectory(false);
         storageProvider.createDirectories(Path.of(masterBase));
-        File file = pdfFilePath.toFile();
+        File file = filePath.toFile();
         if (file.canRead()) {
-            String fileName = pdfFilePath.getFileName().toString();
-            log.debug("fileName = " + fileName);
+            String fileName = filePath.getFileName().toString();
             Path targetPath = Path.of(masterBase, fileName);
 
             if (deleteFromSource) {
-                storageProvider.move(pdfFilePath, targetPath);
+                storageProvider.move(filePath, targetPath);
             } else {
-                storageProvider.copyFile(pdfFilePath, targetPath);
+                storageProvider.copyFile(filePath, targetPath);
             }
         }
     }
@@ -865,7 +865,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * 
      * @param process
      */
-    private void startOpenAutomaticTasks(Process process) {
+    private void startOpenAutomaticTasks(Process process) { // NOSONAR
         // start any open automatic tasks for the created process
         for (Step s : process.getSchritteList()) {
             if (s.getBearbeitungsstatusEnum().equals(StepStatus.OPEN) && s.isTypAutomatisch()) {
