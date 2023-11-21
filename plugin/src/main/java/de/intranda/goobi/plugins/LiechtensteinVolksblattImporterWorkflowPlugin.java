@@ -600,6 +600,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 return page.getDay();
             case "date":
                 return page.getDate();
+            case "datefine":
+                return page.getDateFine();
             case "page":
                 return page.getPageNumber();
             default:

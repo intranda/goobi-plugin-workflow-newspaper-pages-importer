@@ -1,6 +1,8 @@
 package de.intranda.goobi.plugins.model;
 
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -10,6 +12,8 @@ import lombok.Getter;
 public class NewspaperPage {
     private static final Pattern YEAR_PATTERN = Pattern.compile("2\\d{3}");
     private static final Pattern DATE_PATTERN = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
+    private static final DateTimeFormatter DATE_TIME_PARSER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("dd. MMM yyyy");
 
     private Path filePath;
     private String fileName;
@@ -38,6 +42,10 @@ public class NewspaperPage {
     public static String getDateFromFileName(String fileName) {
         Matcher matcher = DATE_PATTERN.matcher(fileName);
         return matcher.find() ? matcher.group() : "";
+    }
+
+    public String getDateFine() {
+        return LocalDate.parse(date, DATE_TIME_PARSER).format(DATE_TIME_FORMATTER);
     }
 
 
