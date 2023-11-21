@@ -22,6 +22,7 @@ import org.goobi.production.plugin.interfaces.IPushPlugin;
 import org.goobi.production.plugin.interfaces.IWorkflowPlugin;
 import org.omnifaces.cdi.PushContext;
 
+import de.intranda.goobi.plugins.model.ImportMetadata;
 import de.intranda.goobi.plugins.model.NewspaperPage;
 import de.sub.goobi.config.ConfigPlugins;
 import de.sub.goobi.helper.BeanHelper;
@@ -66,8 +67,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private static final String NEWSPAPER_ISSUE_TYPE = "NewspaperIssue";
 
     private static final String TITLE_DOC_MAIN_TYPE = "TitleDocMain";
-
-    private static final String PART_NUMBER_TYPE = "PartNumber";
+    private static final String CURRENT_NO_TYPE = "CurrentNo";
 
     private static final String CONTENT_FILE_LOCATION_PREFIX = "file://";
 
@@ -463,11 +463,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // add the logical basics to anchor
             DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_TYPE));
             dd.setLogicalDocStruct(logical);
-            createMetadataFields(prefs, logical, anchorMetadataList);
+            List<ImportMetadata> anchorMetadataListFinal = getMetadataListWithVariablesReplaced(this.anchorMetadataList, page);
+            createMetadataFields(prefs, logical, anchorMetadataListFinal);
 
             // prepare the volume
             DocStruct volume = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_VOLUME_TYPE));
-            List<ImportMetadata> volumeMetadataListFinal = prepareVolumeMetadataList(page);
+            List<ImportMetadata> volumeMetadataListFinal = getMetadataListWithVariablesReplaced(this.volumeMetadataList, page);
             createMetadataFields(prefs, volume, volumeMetadataListFinal);
 
             log.debug("adding DocStruct child: " + NEWSPAPER_VOLUME_TYPE);
@@ -512,23 +513,23 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     }
 
     /**
-     * prepare a list of ImportMetadata that shall be added to the volume part of the METS file
+     * get a list of ImportMetadata whose variables are all replaced
      * 
      * @param page NewspaperPage
-     * @return a list of ImportMetadata that shall be added to the volume part of the METS file
+     * @return a list of ImportMetadata whose variables are all replaced
      */
-    private List<ImportMetadata> prepareVolumeMetadataList(NewspaperPage page) {
+    private List<ImportMetadata> getMetadataListWithVariablesReplaced(List<ImportMetadata> metadataList, NewspaperPage page) {
         // Remark: NewspaperVolume should have a CatalogIDDigital that is different from the one of Newspaper
 
-        List<ImportMetadata> volumeMetadataListFinal = new ArrayList<>();
+        List<ImportMetadata> metadataListFinal = new ArrayList<>();
 
-        for (ImportMetadata md : this.volumeMetadataList) {
+        for (ImportMetadata md : metadataList) {
             // replace variables if configured and used
             ImportMetadata mdToAdd = getImportMetadataWithVariableReplaced(md, page);
-            volumeMetadataListFinal.add(mdToAdd);
+            metadataListFinal.add(mdToAdd);
         }
 
-        return volumeMetadataListFinal;
+        return metadataListFinal;
     }
 
     /**
@@ -689,11 +690,11 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             Metadata titleMetadata = createMetadata(titleType, titleValue, false);
             issue.addMetadata(titleMetadata);
 
-            // PartNumber
-            MetadataType partNumberType = prefs.getMetadataTypeByName(PART_NUMBER_TYPE);
-            String partNumberValue = page.getDate();
-            Metadata partNumberMetadata = createMetadata(partNumberType, partNumberValue, false);
-            issue.addMetadata(partNumberMetadata);
+            // CurrentNo
+            MetadataType currentNoType = prefs.getMetadataTypeByName(CURRENT_NO_TYPE);
+            String currentNoValue = page.getDate();
+            Metadata currentNoMetadata = createMetadata(currentNoType, currentNoValue, false);
+            issue.addMetadata(currentNoMetadata);
 
             ISSUES_SET.add(titleValue);
             log.debug("New issue created: " + titleValue);
@@ -909,15 +910,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             lastPush = System.currentTimeMillis();
             pusher.send("update");
         }
-    }
-
-    @Data
-    @AllArgsConstructor
-    public class ImportMetadata {
-        private String type;
-        private String value;
-        private String variable;
-        private boolean person;
     }
 
     @Data
