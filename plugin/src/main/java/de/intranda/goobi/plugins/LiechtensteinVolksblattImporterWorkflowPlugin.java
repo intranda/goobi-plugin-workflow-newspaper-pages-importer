@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -179,7 +180,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         progress = 0;
         BeanHelper bhelp = new BeanHelper();
 
-        Map<String, List<NewspaperPage>> pagesGroupedByYear = getSortedNewspaperPagesInGroups(importFolder);
+        Map<String, List<NewspaperPage>> pagesGroupedByYear = getSortedNewspaperPagesGroupedByYears(importFolder);
         log.debug("======= Processes for the following years will be created: =======");
         for (Map.Entry<String, List<NewspaperPage>> entry : pagesGroupedByYear.entrySet()) {
             String year = entry.getKey();
@@ -194,17 +195,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         // run the import in a separate thread to allow a dynamic progress bar
         run = true;
-        //        run = false;
         Runnable runnable = () -> {
 
             // read input file
             try {
                 updateLog("Run through all import files");
                 int start = 0;
-
-                final int[] numberOfPages = { 0 };
-                pagesGroupedByYear.forEach((k, v) -> numberOfPages[0] += v.size());
-                int end = numberOfPages[0];
+                int end = getNumberOfPages(pagesGroupedByYear);
 
                 itemsTotal = end - start;
                 itemCurrent = start;
@@ -227,7 +224,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                         continue;
                     }
 
-                    Map<String, List<NewspaperPage>> pagesGroupedByDates = getNewspaperPagesGroupedByDates(pages);
+                    Map<String, List<NewspaperPage>> pagesGroupedByDates = getSortedNewspaperPagesGroupedByDates(pages);
                     for (Map.Entry<String, List<NewspaperPage>> subEntry : pagesGroupedByDates.entrySet()) {
                         String issueDate = subEntry.getKey();
                         List<NewspaperPage> issuePages = subEntry.getValue();
@@ -260,7 +257,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         this.progress = 100 * this.itemCurrent / this.itemsTotal;
     }
 
-    private Map<String, List<NewspaperPage>> getSortedNewspaperPagesInGroups(String folder) {
+    private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByYears(String folder) {
         return storageProvider.listFiles(folder)
                 .stream()
                 .map(NewspaperPage::new)
@@ -268,9 +265,15 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 .collect(Collectors.groupingBy(NewspaperPage::getYear));
     }
 
-    private Map<String, List<NewspaperPage>> getNewspaperPagesGroupedByDates(List<NewspaperPage> pages) {
+    private int getNumberOfPages(Map<String, List<NewspaperPage>> pagesGrouped) {
+        final int[] numberOfPages = { 0 };
+        pagesGrouped.forEach((k, v) -> numberOfPages[0] += v.size());
+        return numberOfPages[0];
+    }
+
+    private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByDates(List<NewspaperPage> pages) {
         return pages.stream()
-                .collect(Collectors.groupingBy(NewspaperPage::getDate));
+                .collect(Collectors.groupingBy(NewspaperPage::getDate, LinkedHashMap::new, Collectors.toList()));
     }
 
     /**
@@ -372,32 +375,32 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      *         created and added to the DigitalDocument.
      * @throws TypeNotAllowedAsChildException
      */
-    private DocStruct getIssueForPage(Prefs prefs, DigitalDocument dd, DocStruct volume, NewspaperPage page) throws TypeNotAllowedAsChildException {
-        String pageDateEuropean = page.getDateEuropean();
-
-        if (!ISSUES_SET.contains(pageDateEuropean)) {
-            // issue does not exist yet, create a new one
-            DocStruct issue = createNewIssue(prefs, dd, page);
-            if (issue != null) {
-                volume.addChild(issue);
-            }
-            return issue;
-        }
-
-        // issue already exists, go find it
-        List<DocStruct> newspaperIssues = dd.getAllDocStructsByType(NEWSPAPER_ISSUE_TYPE);
-        MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
-        for (DocStruct issue : newspaperIssues) {
-            // TODO: the following logic must be optimized for a large amount of issues
-            String issueTitle = issue.getAllMetadataByType(titleType).get(0).getValue();
-
-            if (pageDateEuropean.equals(issueTitle)) {
-                return issue;
-            }
-        }
-
-        return null;
-    }
+    //    private DocStruct getIssueForPage(Prefs prefs, DigitalDocument dd, DocStruct volume, NewspaperPage page) throws TypeNotAllowedAsChildException {
+    //        String pageDateEuropean = page.getDateEuropean();
+    //
+    //        if (!ISSUES_SET.contains(pageDateEuropean)) {
+    //            // issue does not exist yet, create a new one
+    //            DocStruct issue = createNewIssue(prefs, dd, page);
+    //            if (issue != null) {
+    //                volume.addChild(issue);
+    //            }
+    //            return issue;
+    //        }
+    //
+    //        // issue already exists, go find it
+    //        List<DocStruct> newspaperIssues = dd.getAllDocStructsByType(NEWSPAPER_ISSUE_TYPE);
+    //        MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
+    //        for (DocStruct issue : newspaperIssues) {
+    //            // TODO: the following logic must be optimized for a large amount of issues
+    //            String issueTitle = issue.getAllMetadataByType(titleType).get(0).getValue();
+    //
+    //            if (pageDateEuropean.equals(issueTitle)) {
+    //                return issue;
+    //            }
+    //        }
+    //
+    //        return null;
+    //    }
 
     /**
      * try to create and save a new process
@@ -422,15 +425,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // error heppened while saving
             return null;
         }
-
-        // copy files into the media folder of the process
-        //        try {
-        //            copyFileToMasterFolder(process, page.getFilePath());
-        //        } catch (IOException | SwapException | DAOException e) {
-        //            String message = "Error while trying to copy files into the media folder: " + e.getMessage();
-        //            reportError(message);
-        //            return null;
-        //        }
 
         // TODO: find a proper way to start open automatic tasks only after all issues belonging to this process are added
         // start open automatic tasks 
