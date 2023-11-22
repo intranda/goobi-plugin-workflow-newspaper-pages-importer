@@ -54,12 +54,16 @@ public class NewspaperPage {
         return LocalDate.parse(date, DATE_TIME_PARSER).format(DATE_TIME_FORMATTER);
     }
 
-    public boolean isFileNameValid() {
-        return isDateValid() && isPageNumberValid();
+    public boolean isFileSizeValid() {
+        return filePath.toFile().canRead() && filePath.toFile().length() > 0;
     }
 
-    public boolean isFileNameInvalid() {
-        return !isFileNameValid();
+    public boolean isFileValid() {
+        return isDateValid() && isPageNumberValid() && isFileSizeValid();
+    }
+
+    public boolean isFileInvalid() {
+        return !isFileValid();
     }
 
     private boolean isDateValid() {
@@ -69,6 +73,5 @@ public class NewspaperPage {
     private boolean isPageNumberValid() {
         return pageNumber.length() == 3 && NUMBER_PATTERN.matcher(pageNumber).find();
     }
-
 
 }

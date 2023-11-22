@@ -222,6 +222,9 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
                     Map<String, List<NewspaperPage>> pagesGroupedByDates = getSortedNewspaperPagesGroupedByDates(pages);
                     for (Map.Entry<String, List<NewspaperPage>> issueEntry : pagesGroupedByDates.entrySet()) {
+                        if (!run) {
+                            break;
+                        }
                         String issueDate = issueEntry.getKey();
                         List<NewspaperPage> issuePages = issueEntry.getValue();
                         boolean success = tryUpdateOldProcessForIssue(process, issuePages);
@@ -263,8 +266,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         List<Path> invalidFilePaths = getInvalidFilePaths(pages);
 
         if (!invalidFilePaths.isEmpty()) {
-            // print all invalid paths
-            String message = "Invalid file name detected: ";
+            // print all invalid files
+            String message = "Invalid file detected: ";
             for (Path path : invalidFilePaths) {
                 reportError(message + path);
             }
@@ -279,7 +282,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private List<Path> getInvalidFilePaths(List<NewspaperPage> pages) {
         return pages
                 .stream()
-                .filter(NewspaperPage::isFileNameInvalid)
+                .filter(NewspaperPage::isFileInvalid)
                 .map(NewspaperPage::getFilePath)
                 .collect(Collectors.toList());
     }
@@ -415,7 +418,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         }
 
         // TODO: find a proper way to start open automatic tasks only after all issues belonging to this process are added
-        // start open automatic tasks 
+        // start open automatic tasks
         //        startOpenAutomaticTasks(process); // NOSONAR
 
         updateLog("Process successfully created with ID: " + process.getId());
@@ -511,7 +514,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // no variable configured
             return md;
         }
-        
+
         String variableWrapped = getStringWrapped(variable, "_");
         String metadataValue = md.getValue();
         if (!metadataValue.contains(variableWrapped)) {
@@ -519,7 +522,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             log.debug("metadataValue '" + metadataValue + " does not contain variableWrapped '" + variableWrapped + "'");
             return md;
         }
-        
+
         String variableValue = getVariableValue(variable, page);
         String newMetadataValue = metadataValue.replace(variableWrapped, variableValue);
         return new ImportMetadata(md.getType(), newMetadataValue, "", md.isPerson());
@@ -713,7 +716,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             ContentFile contentFileJpeg = prepareContentFileForPage(page, "jpg");
             dsPage.addContentFile(contentFileJpeg);
 
-
         } catch (TypeNotAllowedForParentException | TypeNotAllowedAsChildException | MetadataTypeNotAllowedException e) {
             String message = "Failed to add page '" + page.getFileName() + "' to issue.";
             reportError(message);
@@ -841,7 +843,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private void startOpenAutomaticTasks(Process process) { // NOSONAR
         // start any open automatic tasks for the created process
         for (Step s : process.getSchritteList()) {
-            if (s.getBearbeitungsstatusEnum().equals(StepStatus.OPEN) && s.isTypAutomatisch()) {
+            if (StepStatus.OPEN.equals(s.getBearbeitungsstatusEnum()) && s.isTypAutomatisch()) {
                 ScriptThreadWithoutHibernate myThread = new ScriptThreadWithoutHibernate(s);
                 myThread.startOrPutToQueue();
             }
@@ -867,6 +869,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     /**
      * simple method to send status message to gui
+     *
      * @param logmessage
      */
     private void updateLog(String logmessage) {
@@ -875,6 +878,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     /**
      * simple method to send status message with specific level to gui
+     *
      * @param logmessage
      */
     private void updateLog(String logmessage, int level) {
