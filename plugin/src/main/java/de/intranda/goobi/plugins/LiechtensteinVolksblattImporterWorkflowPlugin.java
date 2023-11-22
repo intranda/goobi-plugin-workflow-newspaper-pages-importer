@@ -181,30 +181,18 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         BeanHelper bhelp = new BeanHelper();
 
         Map<String, List<NewspaperPage>> pagesGroupedByYear = getSortedNewspaperPagesGroupedByYears(importFolder);
-        log.debug("======= Processes for the following years will be created: =======");
-        for (Map.Entry<String, List<NewspaperPage>> entry : pagesGroupedByYear.entrySet()) {
-            String year = entry.getKey();
-            List<NewspaperPage> pages = entry.getValue();
-            log.debug("The year '" + year + "' has following pages:");
-            for (NewspaperPage page : pages) {
-                log.debug(page.getFileName());
-            }
-            log.debug("------------------------------------");
-        }
-        log.debug("=================================================");
 
         // run the import in a separate thread to allow a dynamic progress bar
         run = true;
+
         Runnable runnable = () -> {
 
             // read input file
             try {
                 updateLog("Run through all import files");
-                int start = 0;
-                int end = getNumberOfPages(pagesGroupedByYear);
 
-                itemsTotal = end - start;
-                itemCurrent = start;
+                itemsTotal = getNumberOfPages(pagesGroupedByYear);
+                itemCurrent = 0;
 
                 for (Map.Entry<String, List<NewspaperPage>> entry : pagesGroupedByYear.entrySet()) {
                     Thread.sleep(100);
@@ -225,15 +213,18 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                     }
 
                     Map<String, List<NewspaperPage>> pagesGroupedByDates = getSortedNewspaperPagesGroupedByDates(pages);
-                    for (Map.Entry<String, List<NewspaperPage>> subEntry : pagesGroupedByDates.entrySet()) {
-                        String issueDate = subEntry.getKey();
-                        List<NewspaperPage> issuePages = subEntry.getValue();
+                    for (Map.Entry<String, List<NewspaperPage>> issueEntry : pagesGroupedByDates.entrySet()) {
+                        String issueDate = issueEntry.getKey();
+                        List<NewspaperPage> issuePages = issueEntry.getValue();
                         boolean success = tryUpdateOldProcessForIssue(process, issuePages);
                         if (!success) {
                             String message = "Failed to add issue for date " + issueDate;
                             reportError(message);
                         }
-                        
+
+                        itemCurrent += issuePages.size();
+                        progress = 100 * itemCurrent / itemsTotal;
+                        updateLog("Processed issue: " + issueDate);
                     }
                 }
 
@@ -252,11 +243,12 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         new Thread(runnable).start();
     }
 
-    private void updateProgressStatus() {
-        this.itemCurrent++;
-        this.progress = 100 * this.itemCurrent / this.itemsTotal;
-    }
-
+    /**
+     * get paths of files in the input folder, create NewspaperPage objects based on the paths, and group them by years
+     * 
+     * @param folder import folder
+     * @return NewspaperPages grouped by years
+     */
     private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByYears(String folder) {
         return storageProvider.listFiles(folder)
                 .stream()
@@ -268,6 +260,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private int getNumberOfPages(Map<String, List<NewspaperPage>> pagesGrouped) {
         final int[] numberOfPages = { 0 };
         pagesGrouped.forEach((k, v) -> numberOfPages[0] += v.size());
+        log.debug("numberOfPages = " + numberOfPages[0]);
         return numberOfPages[0];
     }
 
@@ -351,7 +344,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             // add all pages to this issue
             for (NewspaperPage page : pages) {
                 addPageToIssue(prefs, dd, issue, page);
-                updateProgressStatus();
             }
 
             // write changes into file
@@ -363,44 +355,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         }
 
     }
-
-    /**
-     * get the proper issue that the input NewspaperPage belongs to
-     * 
-     * @param prefs Prefs
-     * @param dd DigitalDocument
-     * @param volume DocStruct of type NewspaperVolume
-     * @param page NewspaperPage
-     * @return an existing DocStruct of type NewspaperIssue if one such already exists for the input NewspaperPage, otherwise a new one will be
-     *         created and added to the DigitalDocument.
-     * @throws TypeNotAllowedAsChildException
-     */
-    //    private DocStruct getIssueForPage(Prefs prefs, DigitalDocument dd, DocStruct volume, NewspaperPage page) throws TypeNotAllowedAsChildException {
-    //        String pageDateEuropean = page.getDateEuropean();
-    //
-    //        if (!ISSUES_SET.contains(pageDateEuropean)) {
-    //            // issue does not exist yet, create a new one
-    //            DocStruct issue = createNewIssue(prefs, dd, page);
-    //            if (issue != null) {
-    //                volume.addChild(issue);
-    //            }
-    //            return issue;
-    //        }
-    //
-    //        // issue already exists, go find it
-    //        List<DocStruct> newspaperIssues = dd.getAllDocStructsByType(NEWSPAPER_ISSUE_TYPE);
-    //        MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
-    //        for (DocStruct issue : newspaperIssues) {
-    //            // TODO: the following logic must be optimized for a large amount of issues
-    //            String issueTitle = issue.getAllMetadataByType(titleType).get(0).getValue();
-    //
-    //            if (pageDateEuropean.equals(issueTitle)) {
-    //                return issue;
-    //            }
-    //        }
-    //
-    //        return null;
-    //    }
 
     /**
      * try to create and save a new process
