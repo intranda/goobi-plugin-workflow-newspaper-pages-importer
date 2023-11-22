@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -178,8 +179,22 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         progress = 0;
         BeanHelper bhelp = new BeanHelper();
 
+        Map<String, List<NewspaperPage>> pagesGroupedByYear = getSortedNewspaperPagesInGroups(importFolder);
+        log.debug("======= Processes for the following years will be created: =======");
+        for (Map.Entry<String, List<NewspaperPage>> entry : pagesGroupedByYear.entrySet()) {
+            String year = entry.getKey();
+            List<NewspaperPage> pages = entry.getValue();
+            log.debug("The year '" + year + "' has following pages:");
+            for (NewspaperPage page : pages) {
+                log.debug(page.getFileName());
+            }
+            log.debug("------------------------------------");
+        }
+        log.debug("=================================================");
+
         // run the import in a separate thread to allow a dynamic progress bar
         run = true;
+        //        run = false;
         Runnable runnable = () -> {
 
             // read input file
@@ -187,30 +202,99 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 updateLog("Run through all import files");
                 int start = 0;
 
-                List<NewspaperPage> pages = getSortedNewspaperPages(importFolder);
-                int end = pages.size();
+                //                List<NewspaperPage> pages = getSortedNewspaperPages(importFolder);
+                //                int end = pages.size();
+                final int[] numberOfPages = { 0 };
+                pagesGroupedByYear.forEach((k, v) -> numberOfPages[0] += v.size());
+                int end = numberOfPages[0];
 
                 itemsTotal = end - start;
                 itemCurrent = start;
 
-                // run through import files (e.g. from importFolder)
-                for (NewspaperPage page : pages) {
+                for (Map.Entry<String, List<NewspaperPage>> entry : pagesGroupedByYear.entrySet()) {
                     Thread.sleep(100);
                     if (!run) {
                         break;
                     }
 
-                    boolean success = addFileToProcess(bhelp, page);
-                    if (!success) {
-                        String message = "Error while creating a process during the import";
+                    //                    itemsTotal = end - start;
+                    //                    itemCurrent = start;
+
+                    String year = entry.getKey();
+                    List<NewspaperPage> pages = entry.getValue();
+                    NewspaperPage firstPage = pages.get(0);
+                    // create a new process for this year
+                    Process process = tryCreateAndSaveNewProcess(bhelp, year, firstPage);
+                    updateProgressStatus();
+
+                    if (process == null) {
+                        String message = "Failed to create a new process for year " + year;
                         reportError(message);
+                        continue;
                     }
 
-                    // recalculate progress
-                    itemCurrent++;
-                    progress = 100 * itemCurrent / itemsTotal;
-                    updateLog("Processing of record done.");
+                    // add every page of other pages into this process
+                    //                    for (NewspaperPage page : pages) {
+                    //                        boolean success = tryUpdateOldProcess(process, page);
+                    //                        if (!success) {
+                    //                            String message = "Failed to add the page '" + page.getFileName() + "' to the process for year " + year;
+                    //                            reportError(message);
+                    //                        }
+                    //
+                    //                        // recalculate progress
+                    //                        itemCurrent++;
+                    //                        progress = 100 * itemCurrent / itemsTotal;
+                    //                        updateLog("Processing of record done.");
+                    //                    }
+
+                    Map<String, List<NewspaperPage>> pagesGroupedByDates = getNewspaperPagesGroupedByDates(pages);
+                    for (Map.Entry<String, List<NewspaperPage>> subEntry : pagesGroupedByDates.entrySet()) {
+                        String issueDate = subEntry.getKey();
+                        List<NewspaperPage> issuePages = subEntry.getValue();
+                        boolean success = tryUpdateOldProcessForIssue(process, issuePages);
+                        if (!success) {
+                            String message = "Failed to add issue for date " + issueDate;
+                            reportError(message);
+                        }
+                        
+                    }
+
+                    //                    for (int i = 1; i < pages.size(); ++i) {
+                    //                        NewspaperPage page = pages.get(i);
+                    //                        boolean success = tryUpdateOldProcess(process, page);
+                    //                        if (!success) {
+                    //                            String message = "Failed to add the page '" + page.getFileName() + "' to the process for year " + year;
+                    //                            reportError(message);
+                    //                        }
+                    //
+                    //                        // recalculate progress
+                    //                        itemCurrent++;
+                    //                        progress = 100 * itemCurrent / itemsTotal;
+                    //                        updateLog("Processing of record done.");
+                    //                    }
                 }
+
+                //                itemsTotal = end - start;
+                //                itemCurrent = start;
+                //
+                //                // run through import files (e.g. from importFolder)
+                //                for (NewspaperPage page : pages) {
+                //                    Thread.sleep(100);
+                //                    if (!run) {
+                //                        break;
+                //                    }
+                //
+                //                    boolean success = addFileToProcess(bhelp, page);
+                //                    if (!success) {
+                //                        String message = "Error while creating a process during the import";
+                //                        reportError(message);
+                //                    }
+                //
+                //                    // recalculate progress
+                //                    itemCurrent++;
+                //                    progress = 100 * itemCurrent / itemsTotal;
+                //                    updateLog("Processing of record done.");
+                //                }
 
                 // finally last push
                 run = false;
@@ -227,6 +311,67 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         new Thread(runnable).start();
     }
 
+    private void updateProgressStatus() {
+        this.itemCurrent++;
+        this.progress = 100 * this.itemCurrent / this.itemsTotal;
+    }
+
+    /**
+     * main method to start the actual import
+     */
+    //    public void startImport() {
+    //        progress = 0;
+    //        BeanHelper bhelp = new BeanHelper();
+    //
+    //        // run the import in a separate thread to allow a dynamic progress bar
+    //        run = true;
+    //        Runnable runnable = () -> {
+    //
+    //            // read input file
+    //            try {
+    //                updateLog("Run through all import files");
+    //                int start = 0;
+    //
+    //                List<NewspaperPage> pages = getSortedNewspaperPages(importFolder);
+    //                int end = pages.size();
+    //
+    //                itemsTotal = end - start;
+    //                itemCurrent = start;
+    //
+    //                // run through import files (e.g. from importFolder)
+    //                for (NewspaperPage page : pages) {
+    //                    Thread.sleep(100);
+    //                    if (!run) {
+    //                        break;
+    //                    }
+    //
+    //                    boolean success = addFileToProcess(bhelp, page);
+    //                    if (!success) {
+    //                        String message = "Error while creating a process during the import";
+    //                        reportError(message);
+    //                    }
+    //
+    //                    // recalculate progress
+    //                    itemCurrent++;
+    //                    progress = 100 * itemCurrent / itemsTotal;
+    //                    updateLog("Processing of record done.");
+    //                }
+    //
+    //                // finally last push
+    //                run = false;
+    //                Thread.sleep(2000);
+    //                updateLog("Import completed.");
+    //
+    //            } catch (InterruptedException e) {
+    //                Helper.setFehlerMeldung("Error while trying to execute the import: " + e.getMessage());
+    //                log.error("Error while trying to execute the import", e);
+    //                updateLog("Error while trying to execute the import: " + e.getMessage(), 3);
+    //            }
+    //
+    //        };
+    //        new Thread(runnable).start();
+    //    }
+
     /**
      * get a list of NewspaperPage that are sorted by their issue dates
      * 
@@ -241,6 +386,19 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 .collect(Collectors.toList());
     }
 
+    private Map<String, List<NewspaperPage>> getSortedNewspaperPagesInGroups(String folder) {
+        return storageProvider.listFiles(folder)
+                .stream()
+                .map(NewspaperPage::new)
+                .sorted(byIssueDate)
+                .collect(Collectors.groupingBy(NewspaperPage::getYear));
+    }
+
+    private Map<String, List<NewspaperPage>> getNewspaperPagesGroupedByDates(List<NewspaperPage> pages) {
+        return pages.stream()
+                .collect(Collectors.groupingBy(NewspaperPage::getDate));
+    }
+
     /**
      * add the input NewspaperPage to a Goobi process, where process name will be the value of year read from the page's name, and if the aimed
      * process does not exist yet, a new one will be created.
@@ -249,16 +407,16 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @param page NewspaperPage
      * @return true if the input page is successfully added to a Goobi process, false otherwise
      */
-    private boolean addFileToProcess(BeanHelper bhelp, NewspaperPage page) {
-        String processName = page.getYear();
-        updateLog("Start importing: " + processName, 1);
-
-        // check existen of process
-        Process existingProcess = getProcessByName(processName);
-        boolean processExists = existingProcess != null;
-
-        return processExists ? tryUpdateOldProcess(existingProcess, page) : tryCreateAndSaveNewProcess(bhelp, processName, page);
-    }
+    //    private boolean addFileToProcess(BeanHelper bhelp, NewspaperPage page) {
+    //        String processName = page.getYear();
+    //        updateLog("Start importing: " + processName, 1);
+    //
+    //        // check existen of process
+    //        Process existingProcess = getProcessByName(processName);
+    //        boolean processExists = existingProcess != null;
+    //
+    //        return processExists ? tryUpdateOldProcess(existingProcess, page) : tryCreateAndSaveNewProcess(bhelp, processName, page);
+    //    }
 
     /**
      * try to get a possibly existing process by its name
@@ -279,11 +437,49 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @param page NewspaperPage that shall be added
      * @return true if the input NewspaperPage is successfully added into the old process, false otherwise
      */
-    private boolean tryUpdateOldProcess(Process process, NewspaperPage page) {
+    //    private boolean tryUpdateOldProcess(Process process, NewspaperPage page) {
+    //        log.debug("Updating process: " + process.getTitel());
+    //        Path filePath = page.getFilePath();
+    //        try {
+    //            updateMetadataOfProcess(process, page);
+    //
+    //        } catch (ReadException | IOException | SwapException e1) {
+    //            // read Fileformat error
+    //            String message = "Failed to read the fileformat.";
+    //            reportError(message);
+    //            e1.printStackTrace();
+    //            return false;
+    //
+    //        } catch (PreferencesException e) {
+    //            // DigitalDocument error
+    //            String message = "Failed to get the digital document.";
+    //            reportError(message);
+    //            e.printStackTrace();
+    //            return false;
+    //
+    //        } catch (Exception e) {
+    //            log.debug("Unknown exception caught while updating process: " + process.getTitel());
+    //            e.printStackTrace();
+    //            return false;
+    //        }
+    //
+    //        // copy files into the master folder of the process
+    //        try {
+    //            copyFileToMasterFolder(process, filePath);
+    //            return true;
+    //
+    //        } catch (IOException | SwapException | DAOException e) {
+    //            String message = "Error while trying to copy files into the media folder: " + e.getMessage();
+    //            reportError(message);
+    //            return false;
+    //        }
+    //    }
+
+    private boolean tryUpdateOldProcessForIssue(Process process, List<NewspaperPage> pages) {
         log.debug("Updating process: " + process.getTitel());
-        Path filePath = page.getFilePath();
+        //        Path filePath = page.getFilePath();
         try {
-            updateMetadataOfProcess(process, page);
+            updateMetadataOfProcessForIssue(process, pages);
 
         } catch (ReadException | IOException | SwapException e1) {
             // read Fileformat error
@@ -307,7 +503,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         // copy files into the master folder of the process
         try {
-            copyFileToMasterFolder(process, filePath);
+            //            copyFileToMasterFolder(process, filePath);
+            copyPagesToMasterFolder(process, pages);
             return true;
 
         } catch (IOException | SwapException | DAOException e) {
@@ -347,6 +544,51 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             // add page to issue
             addPageToIssue(prefs, dd, issue, page);
+
+            // write changes into file
+            process.writeMetadataFile(fileformat);
+
+        } catch (Exception e) {
+            log.debug("Exception caught while updating metadata of process: " + process.getTitel());
+            e.printStackTrace();
+        }
+
+    }
+
+    private void updateMetadataOfProcessForIssue(Process process, List<NewspaperPage> pages)
+            throws ReadException, IOException, SwapException, PreferencesException {
+        log.debug("updating metadata of process: " + process.getTitel());
+        try {
+            Prefs prefs = process.getRegelsatz().getPreferences();
+            // read metadata
+            Fileformat fileformat = process.readMetadataFile();
+
+            // update metadata
+            DigitalDocument dd = fileformat.getDigitalDocument();
+            DocStruct logical = dd.getLogicalDocStruct();
+            DocStruct volume = logical.getAllChildren().get(0);
+
+            //            DocStruct issue = getIssueForPage(prefs, dd, volume, page);
+            //            if (issue == null) {
+            //                // error happened
+            //                return;
+            //            }
+
+            NewspaperPage firstPage = pages.get(0);
+
+            DocStruct issue = createNewIssue(prefs, dd, firstPage);
+            if (issue != null) {
+                volume.addChild(issue);
+            }
+
+            //            // add page to issue
+            //            addPageToIssue(prefs, dd, issue, page);
+
+            // add all pages to this issue
+            for (NewspaperPage page : pages) {
+                addPageToIssue(prefs, dd, issue, page);
+                updateProgressStatus();
+            }
 
             // write changes into file
             process.writeMetadataFile(fileformat);
@@ -401,23 +643,23 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * 
      * @param bhelp BeanHelper
      * @param processName title of the new process
-     * @return true if a new process is successfully created and saved, otherwise false
+     * @return the new process if it is successfully created and saved, otherwise null
      */
-    private boolean tryCreateAndSaveNewProcess(BeanHelper bhelp, String processName, NewspaperPage page) {
+    private Process tryCreateAndSaveNewProcess(BeanHelper bhelp, String processName, NewspaperPage page) {
         // get the correct workflow to use
         Process template = ProcessManager.getProcessByExactTitle(workflow);
         // prepare the Fileformat based on the template Process
         Fileformat fileformat = prepareFileformatForNewProcess(template, page);
         if (fileformat == null) {
             // error happened during the preparation
-            return false;
+            return null;
         }
 
         // save the process
         Process process = createAndSaveNewProcess(bhelp, template, processName, fileformat);
         if (process == null) {
             // error heppened while saving
-            return false;
+            return null;
         }
 
         // copy files into the media folder of the process
@@ -426,7 +668,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         } catch (IOException | SwapException | DAOException e) {
             String message = "Error while trying to copy files into the media folder: " + e.getMessage();
             reportError(message);
-            return false;
+            return null;
         }
 
         // TODO: find a proper way to start open automatic tasks only after all issues belonging to this process are added
@@ -435,8 +677,50 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
         updateLog("Process successfully created with ID: " + process.getId());
 
-        return true;
+        return process;
     }
+
+    //    /**
+    //     * try to create and save a new process
+    //     * 
+    //     * @param bhelp BeanHelper
+    //     * @param processName title of the new process
+    //     * @return true if a new process is successfully created and saved, otherwise false
+    //     */
+    //    private boolean tryCreateAndSaveNewProcess(BeanHelper bhelp, String processName, NewspaperPage page) {
+    //        // get the correct workflow to use
+    //        Process template = ProcessManager.getProcessByExactTitle(workflow);
+    //        // prepare the Fileformat based on the template Process
+    //        Fileformat fileformat = prepareFileformatForNewProcess(template, page);
+    //        if (fileformat == null) {
+    //            // error happened during the preparation
+    //            return false;
+    //        }
+    //
+    //        // save the process
+    //        Process process = createAndSaveNewProcess(bhelp, template, processName, fileformat);
+    //        if (process == null) {
+    //            // error heppened while saving
+    //            return false;
+    //        }
+    //
+    //        // copy files into the media folder of the process
+    //        try {
+    //            copyFileToMasterFolder(process, page.getFilePath());
+    //        } catch (IOException | SwapException | DAOException e) {
+    //            String message = "Error while trying to copy files into the media folder: " + e.getMessage();
+    //            reportError(message);
+    //            return false;
+    //        }
+    //
+    //        // TODO: find a proper way to start open automatic tasks only after all issues belonging to this process are added
+    //        // start open automatic tasks 
+    //        //        startOpenAutomaticTasks(process); // NOSONAR
+    //
+    //        updateLog("Process successfully created with ID: " + process.getId());
+    //
+    //        return true;
+    //    }
 
     /**
      * prepare the Fileformat for creating the new process
@@ -445,6 +729,73 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @param page NewspaperPage
      * @return Fileformat
      */
+    //    private Fileformat prepareFileformatForNewProcess(Process template, NewspaperPage page) {
+    //        Prefs prefs = template.getRegelsatz().getPreferences();
+    //
+    //        try {
+    //            Fileformat fileformat = new MetsMods(prefs);
+    //            DigitalDocument dd = new DigitalDocument();
+    //            fileformat.setDigitalDocument(dd);
+    //
+    //            // add the physical basics
+    //            DocStruct physical = dd.createDocStruct(prefs.getDocStrctTypeByName("BoundBook"));
+    //            dd.setPhysicalDocStruct(physical);
+    //            Metadata mdForPath = new Metadata(prefs.getMetadataTypeByName("pathimagefiles"));
+    //            mdForPath.setValue("file:///");
+    //            physical.addMetadata(mdForPath);
+    //
+    //            // add the logical basics to anchor
+    //            DocStruct logical = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_TYPE));
+    //            dd.setLogicalDocStruct(logical);
+    //            List<ImportMetadata> anchorMetadataListFinal = getMetadataListWithVariablesReplaced(this.anchorMetadataList, page);
+    //            createMetadataFields(prefs, logical, anchorMetadataListFinal);
+    //
+    //            // prepare the volume
+    //            DocStruct volume = dd.createDocStruct(prefs.getDocStrctTypeByName(NEWSPAPER_VOLUME_TYPE));
+    //            List<ImportMetadata> volumeMetadataListFinal = getMetadataListWithVariablesReplaced(this.volumeMetadataList, page);
+    //            createMetadataFields(prefs, volume, volumeMetadataListFinal);
+    //
+    //            log.debug("adding DocStruct child: " + NEWSPAPER_VOLUME_TYPE);
+    //            try {
+    //                logical.addChild(volume);
+    //
+    //            } catch (TypeNotAllowedAsChildException e) {
+    //                String message = "Failed to add volume.";
+    //                reportError(message);
+    //                e.printStackTrace();
+    //                return null;
+    //            }
+    //
+    //            // prepare a new issue
+    //            DocStruct issue = createNewIssue(prefs, dd, page);
+    //            if (issue == null) {
+    //                // error happened
+    //                return null;
+    //            }
+    //
+    //            try {
+    //                volume.addChild(issue);
+    //
+    //            } catch (TypeNotAllowedAsChildException e) {
+    //                String message = "Failed to add the issue '" + page.getDate() + "' to volume.";
+    //                reportError(message);
+    //                e.printStackTrace();
+    //                return null;
+    //            }
+    //
+    //            // link page to issue
+    //            addPageToIssue(prefs, dd, issue, page);
+    //
+    //            return fileformat;
+    //
+    //        } catch (PreferencesException | TypeNotAllowedForParentException | MetadataTypeNotAllowedException | IncompletePersonObjectException e) {
+    //            String message = "Error while preparing the Fileformat for the new process: " + e.getMessage();
+    //            reportError(message);
+    //            return null;
+    //        }
+    //
+    //    }
+
     private Fileformat prepareFileformatForNewProcess(Process template, NewspaperPage page) {
         Prefs prefs = template.getRegelsatz().getPreferences();
 
@@ -483,24 +834,24 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             }
 
             // prepare a new issue
-            DocStruct issue = createNewIssue(prefs, dd, page);
-            if (issue == null) {
-                // error happened
-                return null;
-            }
-
-            try {
-                volume.addChild(issue);
-
-            } catch (TypeNotAllowedAsChildException e) {
-                String message = "Failed to add the issue '" + page.getDate() + "' to volume.";
-                reportError(message);
-                e.printStackTrace();
-                return null;
-            }
-
-            // link page to issue
-            addPageToIssue(prefs, dd, issue, page);
+            //            DocStruct issue = createNewIssue(prefs, dd, page);
+            //            if (issue == null) {
+            //                // error happened
+            //                return null;
+            //            }
+            //
+            //            try {
+            //                volume.addChild(issue);
+            //
+            //            } catch (TypeNotAllowedAsChildException e) {
+            //                String message = "Failed to add the issue '" + page.getDate() + "' to volume.";
+            //                reportError(message);
+            //                e.printStackTrace();
+            //                return null;
+            //            }
+            //
+            //            // link page to issue
+            //            addPageToIssue(prefs, dd, issue, page);
 
             return fileformat;
 
@@ -858,6 +1209,13 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             } else {
                 storageProvider.copyFile(filePath, targetPath);
             }
+        }
+    }
+
+    private void copyPagesToMasterFolder(Process process, List<NewspaperPage> pages) throws IOException, SwapException, DAOException {
+        for (NewspaperPage page : pages) {
+            Path path = page.getFilePath();
+            copyFileToMasterFolder(process, path);
         }
     }
 
