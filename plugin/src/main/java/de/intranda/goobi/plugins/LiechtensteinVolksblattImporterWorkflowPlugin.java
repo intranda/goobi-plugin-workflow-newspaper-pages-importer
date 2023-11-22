@@ -177,10 +177,18 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * main method to start the actual import
      */
     public void startImport() {
+        List<NewspaperPage> allPagesSorted = getSortedNewspaperPages(importFolder);
+        boolean allPagesValid = validateNewspaperPages(allPagesSorted);
+        if (!allPagesValid) {
+            updateLog("Aborting...");
+            return;
+        }
+
+        // all files are valid, get ready for import
         progress = 0;
         BeanHelper bhelp = new BeanHelper();
 
-        Map<String, List<NewspaperPage>> pagesGroupedByYear = getSortedNewspaperPagesGroupedByYears(importFolder);
+        Map<String, List<NewspaperPage>> pagesGroupedByYear = getSortedNewspaperPagesGroupedByYears(allPagesSorted);
 
         // run the import in a separate thread to allow a dynamic progress bar
         run = true;
@@ -243,17 +251,42 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         new Thread(runnable).start();
     }
 
-    /**
-     * get paths of files in the input folder, create NewspaperPage objects based on the paths, and group them by years
-     * 
-     * @param folder import folder
-     * @return NewspaperPages grouped by years
-     */
-    private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByYears(String folder) {
+    private List<NewspaperPage> getSortedNewspaperPages(String folder) {
         return storageProvider.listFiles(folder)
                 .stream()
                 .map(NewspaperPage::new)
                 .sorted(byIssueDate)
+                .collect(Collectors.toList());
+    }
+
+    private boolean validateNewspaperPages(List<NewspaperPage> pages) {
+        List<Path> invalidFilePaths = getInvalidFilePaths(pages);
+
+        if (!invalidFilePaths.isEmpty()) {
+            // print all invalid paths
+            String message = "Invalid file name detected: ";
+            for (Path path : invalidFilePaths) {
+                reportError(message + path);
+            }
+
+            return false;
+        }
+
+        return true;
+
+    }
+
+    private List<Path> getInvalidFilePaths(List<NewspaperPage> pages) {
+        return pages
+                .stream()
+                .filter(NewspaperPage::isFileNameInvalid)
+                .map(NewspaperPage::getFilePath)
+                .collect(Collectors.toList());
+    }
+
+    private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByYears(List<NewspaperPage> pages) {
+        return pages
+                .stream()
                 .collect(Collectors.groupingBy(NewspaperPage::getYear));
     }
 
@@ -265,7 +298,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     }
 
     private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByDates(List<NewspaperPage> pages) {
-        return pages.stream()
+        return pages
+                .stream()
                 .collect(Collectors.groupingBy(NewspaperPage::getDate, LinkedHashMap::new, Collectors.toList()));
     }
 
