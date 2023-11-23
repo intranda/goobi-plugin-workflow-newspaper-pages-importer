@@ -56,6 +56,7 @@ import ugh.exceptions.PreferencesException;
 import ugh.exceptions.ReadException;
 import ugh.exceptions.TypeNotAllowedAsChildException;
 import ugh.exceptions.TypeNotAllowedForParentException;
+import ugh.exceptions.WriteException;
 import ugh.fileformats.mets.MetsMods;
 
 @PluginImplementation
@@ -104,6 +105,9 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private String workflow;
     // true if the images should be deleted from the import folder once they are imported, false otherwise
     private boolean deleteFromSource;
+
+    private Prefs prefs;
+    private Fileformat fileformat;
 
     private static final Comparator<NewspaperPage> byIssueDate = (NewspaperPage page1, NewspaperPage page2) -> {
         String date1 = page1.getDate();
@@ -220,6 +224,9 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                         continue;
                     }
 
+                    prefs = process.getRegelsatz().getPreferences();
+                    fileformat = process.readMetadataFile();
+
                     Map<String, List<NewspaperPage>> pagesGroupedByDates = getSortedNewspaperPagesGroupedByDates(pages);
                     for (Map.Entry<String, List<NewspaperPage>> issueEntry : pagesGroupedByDates.entrySet()) {
                         if (!run) {
@@ -237,6 +244,9 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                         progress = 100 * itemCurrent / itemsTotal;
                         updateLog("Processed issue: " + issueDate);
                     }
+
+                    // write changes into file
+                    process.writeMetadataFile(fileformat);
                 }
 
                 // finally last push
@@ -244,7 +254,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                 Thread.sleep(2000);
                 updateLog("Import completed.");
 
-            } catch (InterruptedException e) {
+            } catch (InterruptedException | ReadException | IOException | SwapException | WriteException | PreferencesException e) {
                 Helper.setFehlerMeldung("Error while trying to execute the import: " + e.getMessage());
                 log.error("Error while trying to execute the import", e);
                 updateLog("Error while trying to execute the import: " + e.getMessage(), 3);
@@ -364,9 +374,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             throws ReadException, IOException, SwapException, PreferencesException {
         log.debug("updating metadata of process: " + process.getTitel());
         try {
-            Prefs prefs = process.getRegelsatz().getPreferences();
-            // read metadata
-            Fileformat fileformat = process.readMetadataFile();
 
             // update metadata
             DigitalDocument dd = fileformat.getDigitalDocument();
@@ -382,9 +389,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             for (NewspaperPage page : pages) {
                 addPageToIssue(prefs, dd, issue, page);
             }
-
-            // write changes into file
-            process.writeMetadataFile(fileformat);
 
         } catch (Exception e) {
             log.debug("Exception caught while updating metadata of process: " + process.getTitel());
