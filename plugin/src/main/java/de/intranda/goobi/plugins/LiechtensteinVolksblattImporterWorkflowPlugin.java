@@ -216,7 +216,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                     List<NewspaperPage> pages = entry.getValue();
                     NewspaperPage firstPage = pages.get(0);
                     // create a new process for this year
-                    Process process = tryCreateAndSaveNewProcess(bhelp, year, firstPage);
+                    Process process = tryCreateAndSaveNewProcess(bhelp, "liecvo_000064653_" + year, firstPage);
 
                     if (process == null) {
                         String message = "Failed to create a new process for year " + year;
@@ -354,6 +354,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             return true;
 
         } catch (IOException | SwapException | DAOException e) {
+            log.error("Error while trying to copy files into the media folder", e);
             String message = "Error while trying to copy files into the media folder: " + e.getMessage();
             reportError(message);
             return false;
@@ -716,9 +717,6 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
             ContentFile contentFileTiff = prepareContentFileForPage(page, "tiff");
             dsPage.addContentFile(contentFileTiff);
-
-            ContentFile contentFileJpeg = prepareContentFileForPage(page, "jpg");
-            dsPage.addContentFile(contentFileJpeg);
 
         } catch (TypeNotAllowedForParentException | TypeNotAllowedAsChildException | MetadataTypeNotAllowedException e) {
             String message = "Failed to add page '" + page.getFileName() + "' to issue.";

@@ -30,7 +30,7 @@ public class NewspaperPage {
     public NewspaperPage(Path filePath) {
         this.filePath = filePath;
         fileName = filePath.getFileName().toString();
-        pageNumber = fileName.substring(0, Math.min(3, fileName.length()));
+        pageNumber = fileName.substring(11, 14);
 
         date = getDateFromFileName(fileName);
         String[] dateParts = date.split("[\\W_]+");
@@ -59,7 +59,10 @@ public class NewspaperPage {
     }
 
     public boolean isFileValid() {
-        return isDateValid() && isPageNumberValid() && isFileSizeValid();
+        boolean vdate = isDateValid();
+        boolean vpage = isPageNumberValid();
+        boolean vsize = isFileSizeValid();
+        return vdate && vpage && vsize;
     }
 
     public boolean isFileInvalid() {
