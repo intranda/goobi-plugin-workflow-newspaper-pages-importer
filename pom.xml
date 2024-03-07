@@ -7,7 +7,7 @@
     <relativePath />
   </parent>
   <groupId>io.goobi.workflow.plugin</groupId>
-  <artifactId>plugin-workflow-liechtenstein_volksblatt_importer</artifactId>
+  <artifactId>plugin-workflow-liechtenstein-volksblatt-importer</artifactId>
   <packaging>pom</packaging>
   <modules>
     <module>module-base</module>
