@@ -56,14 +56,14 @@
     						</div>
     						<div class="box-content">
     							<h:panelGroup
-    								rendered="#{!LoginForm.hasRole('Plugin_workflow_liechtenstein_volksblatt_importer')}">
+    								rendered="#{!LoginForm.hasRole('Plugin_workflow_newspaper_pages_importer')}">
     								<h:outputText
     									styleClass="alert alert-danger alert-dismissable margin-bottom-10 margin-top-10"
-    									value="#{msgs.plugin_administration_missingPermission} Plugin_workflow_liechtenstein_volksblatt_importer"/>
+    									value="#{msgs.plugin_administration_missingPermission} Plugin_workflow_newspaper_pages_importer"/>
     							</h:panelGroup>
     
     							<h:panelGroup id="actionform" styleClass="col-sm-12"
-    								rendered="#{LoginForm.hasRole('Plugin_workflow_liechtenstein_volksblatt_importer')}">
+    								rendered="#{LoginForm.hasRole('Plugin_workflow_newspaper_pages_importer')}">
     								
 <!--                                     <h:outputText -->
 <!--                                         styleClass="alert alert-warning alert-dismissable margin-bottom-10 margin-top-10" -->
@@ -120,7 +120,7 @@
 
         <!-- log view -->
         <h:panelGroup id="logs">
-            <h:panelGroup styleClass="logs" rendered="#{LoginForm.hasRole('Plugin_workflow_liechtenstein_volksblatt_importer')}">
+            <h:panelGroup styleClass="logs" rendered="#{LoginForm.hasRole('Plugin_workflow_newspaper_pages_importer')}">
                 <ui:repeat
                     var="log"
                     value="#{NavigationForm.workflowPlugin.logQueue}">

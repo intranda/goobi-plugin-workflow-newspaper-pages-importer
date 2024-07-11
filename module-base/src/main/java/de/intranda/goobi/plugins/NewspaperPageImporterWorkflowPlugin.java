@@ -61,16 +61,15 @@ import ugh.fileformats.mets.MetsMods;
 
 @PluginImplementation
 @Log4j2
-public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowPlugin, IPushPlugin {
+public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPushPlugin {
 
     private static final StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
     private static final String NEWSPAPER_TYPE = "Newspaper";
     private static final String NEWSPAPER_VOLUME_TYPE = "NewspaperVolume";
     private static final String NEWSPAPER_ISSUE_TYPE = "NewspaperIssue";
-
     private static final String TITLE_DOC_MAIN_TYPE = "TitleDocMain";
-    private static final String CURRENT_NO_TYPE = "CurrentNo";
+    private static final String DATE = "DateIssued";
 
     private static final String CONTENT_FILE_LOCATION_PREFIX = "file://";
 
@@ -78,7 +77,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private static final Set<String> ISSUES_SET = new HashSet<>();
 
     @Getter
-    private String title = "intranda_workflow_liechtenstein_volksblatt_importer";
+    private String title = "intranda_workflow_newspaper_pages_importer";
     private long lastPush = System.currentTimeMillis();
 
     // list of metadata that shall be added to the anchor file
@@ -103,6 +102,10 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
     private String importFolder;
     // name of the workflow template that shall be used
     private String workflow;
+    // process title
+    private String processtitle;
+    // page number prefix
+    private String pageNumberPrefix;
     // true if the images should be deleted from the import folder once they are imported, false otherwise
     private boolean deleteFromSource;
 
@@ -122,14 +125,14 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
 
     @Override
     public String getGui() {
-        return "/uii/plugin_workflow_liechtenstein_volksblatt_importer.xhtml";
+        return "/uii/plugin_workflow_newspaper_pages_importer.xhtml";
     }
 
     /**
      * Constructor
      */
-    public LiechtensteinVolksblattImporterWorkflowPlugin() {
-        log.info("Liechteinstein Volksblatt importer workflow plugin started");
+    public NewspaperPageImporterWorkflowPlugin() {
+        log.info("Newspaper pages importer workflow plugin started");
 
         // read important configuration first
         readConfiguration();
@@ -145,6 +148,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         XMLConfiguration config = ConfigPlugins.getPluginConfig(title);
         importFolder = config.getString("importFolder");
         workflow = config.getString("workflow");
+        processtitle = config.getString("processtitle");
+        pageNumberPrefix = config.getString("pageNumberPrefix");
         deleteFromSource = config.getBoolean("deleteFromSource", false);
 
         anchorMetadataList = new ArrayList<>();
@@ -184,7 +189,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         List<NewspaperPage> allPagesSorted = getSortedNewspaperPages(importFolder);
         boolean allPagesValid = validateNewspaperPages(allPagesSorted);
         if (!allPagesValid) {
-            updateLog("Aborting...");
+            updateLog("Aborting ...");
             return;
         }
 
@@ -216,7 +221,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
                     List<NewspaperPage> pages = entry.getValue();
                     NewspaperPage firstPage = pages.get(0);
                     // create a new process for this year
-                    Process process = tryCreateAndSaveNewProcess(bhelp, "liecvo_000064653_" + year, firstPage);
+                    Process process = tryCreateAndSaveNewProcess(bhelp, processtitle + "_" + year, firstPage);
 
                     if (process == null) {
                         String message = "Failed to create a new process for year " + year;
@@ -373,7 +378,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      */
     private void updateMetadataOfProcessForIssue(Process process, List<NewspaperPage> pages)
             throws ReadException, IOException, SwapException, PreferencesException {
-        log.debug("updating metadata of process: " + process.getTitel());
+        log.debug("Updating metadata of process: " + process.getTitel());
         try {
 
             // update metadata
@@ -464,7 +469,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             List<ImportMetadata> volumeMetadataListFinal = getMetadataListWithVariablesReplaced(this.volumeMetadataList, page);
             createMetadataFields(prefs, volume, volumeMetadataListFinal);
 
-            log.debug("adding DocStruct child: " + NEWSPAPER_VOLUME_TYPE);
+            log.debug("Adding DocStruct child: " + NEWSPAPER_VOLUME_TYPE);
             try {
                 logical.addChild(volume);
 
@@ -524,7 +529,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
         String metadataValue = md.getValue();
         if (!metadataValue.contains(variableWrapped)) {
             // no such variable in use, no replacement needed
-            log.debug("metadataValue '" + metadataValue + " does not contain variableWrapped '" + variableWrapped + "'");
+            log.debug("Metadata value '" + metadataValue + " does not contain variableWrapped '" + variableWrapped + "'");
             return md;
         }
 
@@ -665,8 +670,8 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             Metadata titleMetadata = createMetadata(titleType, titleValue, false);
             issue.addMetadata(titleMetadata);
 
-            // CurrentNo
-            MetadataType currentNoType = prefs.getMetadataTypeByName(CURRENT_NO_TYPE);
+            // Date
+            MetadataType currentNoType = prefs.getMetadataTypeByName(DATE);
             String currentNoValue = page.getDate();
             Metadata currentNoMetadata = createMetadata(currentNoType, currentNoValue, false);
             issue.addMetadata(currentNoMetadata);
@@ -694,11 +699,11 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
      * @param page NewspaperPage that shall be added to the input issue
      */
     private void addPageToIssue(Prefs prefs, DigitalDocument dd, DocStruct issue, NewspaperPage page) {
-        log.debug("adding new page '" + page.getPageNumber() + "' to issue '" + page.getDate());
+        log.debug("Adding new page '" + page.getPageNumber() + "' to issue '" + page.getDate());
         DocStruct physical = dd.getPhysicalDocStruct();
         DocStruct volume = dd.getLogicalDocStruct().getAllChildren().get(0);
         DocStructType pageType = prefs.getDocStrctTypeByName("page");
-        String pageLogNumber = "S." + Integer.valueOf(page.getPageNumber());
+        String pageLogNumber = pageNumberPrefix.trim() + " " + Integer.valueOf(page.getPageNumber());
 
         try {
             DocStruct dsPage = dd.createDocStruct(pageType);
@@ -709,7 +714,7 @@ public class LiechtensteinVolksblattImporterWorkflowPlugin implements IWorkflowP
             dsPage.addMetadata(metaPhysPageNumber);
 
             Metadata metaLogPageNumber = new Metadata(prefs.getMetadataTypeByName("logicalPageNumber"));
-            metaLogPageNumber.setValue(pageLogNumber);
+            metaLogPageNumber.setValue(pageLogNumber.trim());
             dsPage.addMetadata(metaLogPageNumber);
 
             volume.addReferenceTo(dsPage, "logical_physical");

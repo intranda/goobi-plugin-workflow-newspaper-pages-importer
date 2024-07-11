@@ -5,6 +5,12 @@
 	<!-- which workflow to use -->
 	<workflow>Newspaper_workflow</workflow>
 	
+	<!-- prefix for the process title; will be extended by '_' and the year information -->
+	<processtitle>borken_170178129</processtitle>
+
+	<!-- prefix for the page labels -->
+	<pageNumberPrefix>Seite </pageNumberPrefix>
+
 	<!-- Whether or not to delete the images from the import folder once they are imported. OPTIONAL. DEFAULT false. -->
 	<deleteFromSource>true</deleteFromSource>
 	
