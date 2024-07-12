@@ -106,6 +106,10 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     private String processtitle;
     // page number prefix
     private String pageNumberPrefix;
+    // issue title prefix
+    private String issueTitlePrefix;
+    // language for ate for issueTitle
+    private String languageForDateFormat;
     // true if the images should be deleted from the import folder once they are imported, false otherwise
     private boolean deleteFromSource;
 
@@ -150,6 +154,8 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
         workflow = config.getString("workflow");
         processtitle = config.getString("processtitle");
         pageNumberPrefix = config.getString("pageNumberPrefix");
+        issueTitlePrefix = config.getString("issueTitlePrefix");
+        languageForDateFormat = config.getString("languageForDateFormat", "de");
         deleteFromSource = config.getBoolean("deleteFromSource", false);
 
         anchorMetadataList = new ArrayList<>();
@@ -666,7 +672,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
 
             // TitleDocMain
             MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
-            String titleValue = page.getDateEuropean();
+            String titleValue = page.getUserFriendlyTitle(languageForDateFormat, issueTitlePrefix);
             Metadata titleMetadata = createMetadata(titleType, titleValue, false);
             issue.addMetadata(titleMetadata);
 

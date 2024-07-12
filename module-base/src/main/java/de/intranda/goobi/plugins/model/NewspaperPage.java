@@ -27,8 +27,12 @@
 package de.intranda.goobi.plugins.model;
 
 import java.nio.file.Path;
+import java.text.DateFormat;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Date;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -46,12 +50,12 @@ public class NewspaperPage {
     private static final Pattern YEAR_PATTERN = Pattern.compile("2\\d{3}");
     private static final Pattern DATE_PATTERN = Pattern.compile("\\d{4}[\\W_]+\\d{2}[\\W_]+\\d{2}");
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d{3}");
-    private static final DateTimeFormatter DATE_TIME_PARSER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("dd. MMM yyyy");
+    private static final DateTimeFormatter FORMATTER_ISO = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter FORMATTER_LONG = DateTimeFormatter.ofPattern("dd. MMM yyyy");
 
     private Path filePath;
     private String fileName;
-
+    private LocalDate localdate;
     private String date;
     private String year;
     private String month;
@@ -69,21 +73,14 @@ public class NewspaperPage {
         pageNumber = fileName.substring(11, 14);
 
         date = getDateFromFileName(fileName);
+        localdate = LocalDate.parse(date);
+
         String[] dateParts = date.split("[\\W_]+");
         if (dateParts.length >= 3) {
             year = dateParts[0];
             month = dateParts[1];
             day = dateParts[2];
         }
-    }
-
-    /**
-     * Gets the European-style formatted date (dd.mm.yyyy) of the newspaper page.
-     *
-     * @return The formatted date.
-     */
-    public String getDateEuropean() {
-        return day + "." + month + "." + year;
     }
 
     /**
@@ -103,7 +100,7 @@ public class NewspaperPage {
      * @return The formatted date.
      */
     public String getDateFine() {
-        return LocalDate.parse(date, DATE_TIME_PARSER).format(DATE_TIME_FORMATTER);
+        return localdate.format(FORMATTER_LONG);
     }
 
     /**
@@ -143,4 +140,16 @@ public class NewspaperPage {
     private boolean isPageNumberValid() {
         return pageNumber.length() == 3 && NUMBER_PATTERN.matcher(pageNumber).find();
     }
+
+    /**
+     * Gets the European-style formatted date (dd.mm.yyyy) together with day information for a user friendly string
+     *
+     * @return The formatted date with day description.
+     */
+    public String getUserFriendlyTitle(String lang, String titlePrefix) {
+        DateFormat df = DateFormat.getDateInstance(DateFormat.FULL, Locale.forLanguageTag(lang));
+        Date mydate = Date.from(localdate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+        return titlePrefix.trim() + " " + df.format(mydate);
+    }
+
 }

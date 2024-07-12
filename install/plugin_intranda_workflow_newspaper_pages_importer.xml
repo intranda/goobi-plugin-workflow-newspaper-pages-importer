@@ -6,10 +6,16 @@
 	<workflow>Newspaper_workflow</workflow>
 	
 	<!-- prefix for the process title; will be extended by '_' and the year information -->
-	<processtitle>borken_170178129</processtitle>
+	<processtitle>mytitle_1234567</processtitle>
 
 	<!-- prefix for the page labels -->
 	<pageNumberPrefix>Seite </pageNumberPrefix>
+
+	<!-- language to use for long date formatter in issue title -->
+	<languageForDateFormat>de</languageForDateFormat>
+
+	<!-- prefix to use for the issue titles -->
+	<issueTitlePrefix>Ausgabe vom</issueTitlePrefix>
 
 	<!-- Whether or not to delete the images from the import folder once they are imported. OPTIONAL. DEFAULT false. -->
 	<deleteFromSource>true</deleteFromSource>
