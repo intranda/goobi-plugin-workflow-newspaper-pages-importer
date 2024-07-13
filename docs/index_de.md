@@ -1,7 +1,6 @@
 ---
 title: Import von Zeitungsausgaben als Einzelseiten
 identifier: intranda_workflow_newspaper_pages_importer
-github: https://github.com/intranda/goobi-plugin-workflow-newspaper-pages-importer
 description: Dieses Workflow Plugin erlaubt einen Massenimport von Zeitungsausgaben in Form von Einzelseiten, bei dem Datum, Ausgabennummern und Seitenzählungen übernommen werden.
 published: true
 ---
