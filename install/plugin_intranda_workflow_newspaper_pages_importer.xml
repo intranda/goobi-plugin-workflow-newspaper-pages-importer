@@ -1,0 +1,60 @@
+<config_plugin>
+	<!-- which folder to use as import source -->
+	<importFolder>/opt/digiverso/import/sample/</importFolder>
+	
+	<!-- which workflow to use -->
+	<workflow>Newspaper_workflow</workflow>
+	
+	<!-- prefix for the process title; will be extended by '_' and the year information -->
+	<processtitle>mytitle_1234567</processtitle>
+
+	<!-- prefix for the page labels -->
+	<pageNumberPrefix>Seite </pageNumberPrefix>
+
+	<!-- language to use for long date formatter in issue title -->
+	<languageForDateFormat>de</languageForDateFormat>
+
+	<!-- prefix to use for the issue titles -->
+	<issueTitlePrefix>Ausgabe vom</issueTitlePrefix>
+
+	<!-- Whether or not to delete the images from the import folder once they are imported. OPTIONAL. DEFAULT false. -->
+	<deleteFromSource>true</deleteFromSource>
+	
+	<!-- Configure here the metadata that shall be added to the anchor file or the volume part of the mets file. -->
+	<!-- This tag accepts the following attributes:
+		- @value: metadata value template, which may contain a variable defined by @var wrapped with _ from both sides
+		- @type: metadata type
+		- @var: variable that is ready to be used in @value. To use it, wrap it with _ from both sides and put it into the @value string. OPTIONAL.
+					- Options are YEAR | MONTH | DAY | DATE | DATEFINE, where cases only matters for the references in @value string.
+					- The only difference between DATE and DATEFINE are their representations of the date: DATE keeps the original format "yyyy-mm-dd" while DATEFINE takes a new one "dd. MMM. yyyy".
+					- The value of an unknown variable will be its name.
+					- For example, 
+						- IF one defines a @var by "year", then it should be referenced in @value using "_year_"
+						- IF one defines a @var by "YEAR", then it should be referenced in @value using "_YEAR_", although YEAR and year are actually the same option
+						- IF one defines a @var by "unknown", then any occurrences of "_unknown_" will be replaced by "unknown"
+						- IF one wants to have a @value template containing "_Year_" as hard-coded, then "Year" should be avoided to be @var. If in such cases such a 
+						  variable is still needed, then one can define @var to be something like "yEaR".
+		- @anchor: true if this metadata is an anchor metadata, false if not. OPTIONAL. DEFAULT false.
+		- @volume: true if this metadata is a volume metadata, false if not. OPTIONAL. DEFAULT false.
+		- @person: true if this metadata is a person metadata, false if not. OPTIONAL. DEFAULT false.
+	 -->
+	<metadata value="CHANGE_ME" type="TitleDocMain" anchor="true" volume="false" person="false" />
+	<!-- The @volume attribute is by default false. -->
+	<metadata value="CHANGE_ME" type="CatalogIDSource" anchor="true" person="false" />
+	<!-- The @person attribute is by default false. -->
+	<metadata value="CHANGE_ME" type="CatalogIDDigital" anchor="true" />
+	
+	<metadata value="CHANGE_ME" type="CurrentNoSorting" anchor="false" volume="true" />
+	<!-- The @anchor attribute is by default false. -->
+	<metadata value="zeitungen#livb" type="SubjectTopic" volume="true" />
+	<metadata value="pt_zeitung" type="Publikationstyp" volume="true" />
+	<metadata value="zeitungsherausgeber#livb" type="Classification" volume="true" />
+	<metadata value="eli" type="ViewerInstance" volume="true" />
+	
+	<!-- Use @var to generate the final metadata values in the run. -->
+	<metadata var="YEAR" value="Newspaper Volume _YEAR_" type="CatalogIDDigital" volume="true" />
+	<metadata var="YEAR" value="Liechtensteiner Volksblatt (_YEAR_)" type="TitleDocMain" volume="true" />
+	<metadata var="YEAR" value="_YEAR_" type="CurrentNo" volume="true" />
+	<metadata var="YEAR" value="_YEAR_" type="PublicationYear" volume="true" />
+	
+</config_plugin>

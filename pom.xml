@@ -3,11 +3,11 @@
   <parent>
     <groupId>io.goobi.workflow</groupId>
     <artifactId>workflow-base</artifactId>
-    <version>24.06</version>
+    <version>24.07</version>
     <relativePath />
   </parent>
   <groupId>io.goobi.workflow.plugin</groupId>
-  <artifactId>plugin-workflow-liechtenstein-volksblatt-importer</artifactId>
+  <artifactId>plugin-workflow-newspaper-pages-importer</artifactId>
   <packaging>pom</packaging>
   <modules>
     <module>module-base</module>
