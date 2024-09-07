@@ -15,8 +15,8 @@ Detail                      | Description
 **Plugin identifier**       | intranda_workflow_newspaper_pages_importer
 **Plugin type**             | workflow
 **Licence**                 | GPL 2.0 or newer
-**Documentation (German)**  | https://docs.goobi.io/workflow-plugins/v/eng/workflow/goobi-plugin-workflow-newspaper-pages-importer
-**Documentation (English)** | https://docs.goobi.io/workflow-plugins/v/ger/workflow/goobi-plugin-workflow-newspaper-pages-importer
+**Documentation (German)**  | https://docs.goobi.io/workflow-plugins/v/ger/workflow/goobi-plugin-workflow-newspaper-pages-importer
+**Documentation (English)** | https://docs.goobi.io/workflow-plugins/v/eng/workflow/goobi-plugin-workflow-newspaper-pages-importer
 
 ## Goobi details
 
