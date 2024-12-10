@@ -37,7 +37,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
-import org.jfree.util.Log;
 
 import lombok.Getter;
 
@@ -48,10 +47,7 @@ import lombok.Getter;
 @Getter
 public class NewspaperPage {
 
-    private static final Pattern YEAR_PATTERN = Pattern.compile("2\\d{3}");
     private static final Pattern DATE_PATTERN = Pattern.compile("\\d{4}[\\W_]+\\d{2}[\\W_]+\\d{2}");
-    private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d{3}");
-    private static final DateTimeFormatter FORMATTER_ISO = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter FORMATTER_LONG = DateTimeFormatter.ofPattern("dd. MMM yyyy");
 
     private Path filePath;
@@ -113,43 +109,12 @@ public class NewspaperPage {
         return filePath.toFile().canRead() && filePath.toFile().length() > 0;
     }
 
-    /**
-     * Checks if the file is valid based on date, page number, and file size.
-     *
-     * @return True if the file is valid, false otherwise.
-     */
-    public boolean isFileValid() {
-        boolean vdate = isDateValid();
-        boolean vpage = isPageNumberValid();
-        boolean vsize = isFileSizeValid();
-
-        if (!vdate) {
-            Log.error("Date is invalid");
-        }
-        if (!vpage) {
-            Log.error("Page number is invalid");
-        }
-        if (!vsize) {
-            Log.error("File size is invalid");
-        }
-        return vdate && vpage && vsize;
-    }
-
-    /**
-     * Checks if the file is invalid based on date, page number, and file size.
-     *
-     * @return True if the file is invalid, false otherwise.
-     */
-    public boolean isFileInvalid() {
-        return !isFileValid();
-    }
-
-    private boolean isDateValid() {
+    public boolean isDateValid() {
         return StringUtils.isNoneBlank(date, year, month, day);
     }
 
-    private boolean isPageNumberValid() {
-        return NUMBER_PATTERN.matcher(pageNumber).find();
+    public boolean isPageNumberValid() {
+        return StringUtils.isNumeric(pageNumber);
     }
 
     /**

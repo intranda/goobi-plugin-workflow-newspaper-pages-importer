@@ -288,28 +288,22 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     }
 
     private boolean validateNewspaperPages(List<NewspaperPage> pages) {
-        List<Path> invalidFilePaths = getInvalidFilePaths(pages);
-
-        if (!invalidFilePaths.isEmpty()) {
-            // print all invalid files
-            String message = "Invalid file detected: ";
-            for (Path path : invalidFilePaths) {
-                reportError(message + path);
+        boolean result = true;
+        for (NewspaperPage p : pages) {
+            if (!p.isDateValid()) {
+                reportError("Date is invalid for file: " + p.getFilePath());
+                result = false;
             }
-
-            return false;
+            if (!p.isPageNumberValid()) {
+                reportError("Page number is invalid for file: " + p.getFilePath());
+                result = false;
+            }
+            if (!p.isFileSizeValid()) {
+                reportError("File size is invalid for file: " + p.getFilePath());
+                result = false;
+            }
         }
-
-        return true;
-
-    }
-
-    private List<Path> getInvalidFilePaths(List<NewspaperPage> pages) {
-        return pages
-                .stream()
-                .filter(NewspaperPage::isFileInvalid)
-                .map(NewspaperPage::getFilePath)
-                .collect(Collectors.toList());
+        return result;
     }
 
     private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByYears(List<NewspaperPage> pages) {
