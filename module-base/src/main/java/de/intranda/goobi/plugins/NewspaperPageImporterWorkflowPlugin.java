@@ -109,6 +109,11 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     private String pageNumberPrefix;
     // issue title prefix
     private String issueTitlePrefix;
+    private String issueTitlePrefixMorning;
+    private String issueTitlePrefixEvening;
+    // identifiers to detect morning and evening issues
+    private String morningIssueIdentifier;
+    private String eveningIssueIdentifier;
     // language for ate for issueTitle
     private String languageForDateFormat;
     // true if the images should be deleted from the import folder once they are imported, false otherwise
@@ -166,8 +171,13 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                 importFolder = config.getString("importFolder");
                 workflow = config.getString("workflow");
                 processtitle = config.getString("processtitle");
-                pageNumberPrefix = config.getString("pageNumberPrefix");
                 issueTitlePrefix = config.getString("issueTitlePrefix");
+                issueTitlePrefixMorning = config.getString("issueTitlePrefixMorning");
+                issueTitlePrefixEvening = config.getString("issueTitlePrefixEvening");
+                morningIssueIdentifier = config.getString("issueTitlePrefixMorning[@identifier]");
+                eveningIssueIdentifier = config.getString("issueTitlePrefixEvening[@identifier]");
+
+                pageNumberPrefix = config.getString("pageNumberPrefix");
                 languageForDateFormat = config.getString("languageForDateFormat", "de");
                 deleteFromSource = config.getBoolean("deleteFromSource", false);
                 anchorMetadataList = new ArrayList<>();
