@@ -103,16 +103,33 @@
                                         class="d-inline"
                                         data-bs-toggle="tooltip"
                                         title="#{msgs.plugin_intranda_workflow_startImport}">
-                                        
-                                        <!-- import button -->
-                                        <button jsf:action="#{NavigationForm.workflowPlugin.startImport()}"
-                                        	data-toggle="tooltip" title="#{msgs.plugin_intranda_workflow_startImport}"
-                                            aria-label="Volksblatt" class="btn btn-primary">
-                                            <span aria-hidden="true" class="fa fa-play-circle" />
+                                        <button
+                                            class="btn btn-primary dropdown-toggle"
+                                            data-bs-toggle="dropdown"
+                                            aria-haspopup="true"
+                                            aria-expanded="false"
+                                            type="button">
+                                            <span
+                                                aria-hidden="true"
+                                                class="fa fa-play-circle" />
                                             <span>
-                                            	#{msgs.plugin_intranda_workflow_startImport}
+                                                #{msgs.plugin_intranda_workflow_startImport}
                                             </span>
                                         </button>
+                                        <ul class="dropdown-menu">
+                                            <ui:repeat
+                                                var="set"
+                                                value="#{NavigationForm.workflowPlugin.sets}">
+                                                <li>
+                                                    <button
+                                                        jsf:action="#{NavigationForm.workflowPlugin.startImport(set)}"
+                                                        aria-label="#{set}"
+                                                        class="dropdown-item">
+                                                        <h:outputText value="#{set}" />
+                                                    </button>
+                                                </li>
+                                            </ui:repeat>
+                                        </ul>
                                     </div>
                                     <!-- Cancel button -->
                                     <button

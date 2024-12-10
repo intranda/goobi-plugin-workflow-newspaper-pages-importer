@@ -15,7 +15,6 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.collections4.queue.CircularFifoQueue;
 import org.apache.commons.configuration.HierarchicalConfiguration;
-import org.apache.commons.configuration.XMLConfiguration;
 import org.apache.commons.lang3.StringUtils;
 import org.goobi.beans.Process;
 import org.goobi.beans.Step;
@@ -114,6 +113,8 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     private String languageForDateFormat;
     // true if the images should be deleted from the import folder once they are imported, false otherwise
     private boolean deleteFromSource;
+    @Getter
+    private List<String> sets;
 
     private Prefs prefs;
     private Fileformat fileformat;
@@ -139,43 +140,56 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
      */
     public NewspaperPageImporterWorkflowPlugin() {
         log.info("Newspaper pages importer workflow plugin started");
+        errors = 0;
 
-        // read important configuration first
-        readConfiguration();
+        // read sets
+        sets = new ArrayList<String>();
+        List<HierarchicalConfiguration> configSets = ConfigPlugins.getPluginConfig(title).configurationsAt("set");
+        for (HierarchicalConfiguration config : configSets) {
+            sets.add(config.getString("[@title]", "-"));
+        }
     }
 
     /**
      * private method to read main configuration file
      */
-    private void readConfiguration() {
-        updateLog("Start reading the configuration");
+    private void readConfiguration(String set) {
+        updateLog("Reading configuration for set");
         errors = 0;
-        // read some main configuration
-        XMLConfiguration config = ConfigPlugins.getPluginConfig(title);
-        importFolder = config.getString("importFolder");
-        workflow = config.getString("workflow");
-        processtitle = config.getString("processtitle");
-        pageNumberPrefix = config.getString("pageNumberPrefix");
-        issueTitlePrefix = config.getString("issueTitlePrefix");
-        languageForDateFormat = config.getString("languageForDateFormat", "de");
-        deleteFromSource = config.getBoolean("deleteFromSource", false);
 
-        anchorMetadataList = new ArrayList<>();
-        volumeMetadataList = new ArrayList<>();
-        List<HierarchicalConfiguration> mappings = config.configurationsAt("metadata");
-        for (HierarchicalConfiguration mapping : mappings) {
-            String type = mapping.getString("[@type]", "");
-            String value = mapping.getString("[@value]", "");
-            String variable = mapping.getString("[@var]", "");
-            boolean isPerson = mapping.getBoolean("[@person]", false);
-            boolean isAnchor = mapping.getBoolean("[@anchor]", false);
-            boolean isVolume = mapping.getBoolean("[@volume]", false);
-            ImportMetadata md = new ImportMetadata(type, value, variable, isPerson);
-            if (isAnchor) {
-                anchorMetadataList.add(md);
-            }
-            if (isVolume) {
-                volumeMetadataList.add(md);
+        // find the correct configuration block
+        List<HierarchicalConfiguration> configSets = ConfigPlugins.getPluginConfig(title).configurationsAt("set");
+        for (HierarchicalConfiguration config : configSets) {
+
+            // if the correct set was found read it in and start the export
+            if (config.getString("[@title]", "-").equals(set)) {
+                importFolder = config.getString("importFolder");
+                workflow = config.getString("workflow");
+                processtitle = config.getString("processtitle");
+                pageNumberPrefix = config.getString("pageNumberPrefix");
+                issueTitlePrefix = config.getString("issueTitlePrefix");
+                languageForDateFormat = config.getString("languageForDateFormat", "de");
+                deleteFromSource = config.getBoolean("deleteFromSource", false);
+                anchorMetadataList = new ArrayList<>();
+                volumeMetadataList = new ArrayList<>();
+
+                // metadata mappings to use
+                List<HierarchicalConfiguration> mappings = config.configurationsAt("metadata");
+                for (HierarchicalConfiguration mapping : mappings) {
+                    String type = mapping.getString("[@type]", "");
+                    String value = mapping.getString("[@value]", "");
+                    String variable = mapping.getString("[@var]", "");
+                    boolean isPerson = mapping.getBoolean("[@person]", false);
+                    boolean isAnchor = mapping.getBoolean("[@anchor]", false);
+                    boolean isVolume = mapping.getBoolean("[@volume]", false);
+                    ImportMetadata md = new ImportMetadata(type, value, variable, isPerson);
+                    if (isAnchor) {
+                        anchorMetadataList.add(md);
+                    }
+                    if (isVolume) {
+                        volumeMetadataList.add(md);
+                    }
+                }
             }
         }
 
@@ -193,7 +207,8 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     /**
      * main method to start the actual import
      */
-    public void startImport() {
+    public void startImport(String set) {
+        readConfiguration(set);
         List<NewspaperPage> allPagesSorted = getSortedNewspaperPages(importFolder);
         boolean allPagesValid = validateNewspaperPages(allPagesSorted);
         if (!allPagesValid) {
