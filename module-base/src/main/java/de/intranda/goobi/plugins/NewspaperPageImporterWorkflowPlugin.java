@@ -813,13 +813,8 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
         // save the process
         Process process = bhelp.createAndSaveNewProcess(template, processName, fileformat);
 
-        // add some properties
-        bhelp.EigenschaftHinzufuegen(process, "Template", template.getTitel());
-        bhelp.EigenschaftHinzufuegen(process, "TemplateID", "" + template.getId());
-
         try {
             ProcessManager.saveProcess(process);
-
         } catch (DAOException e) {
             errors++;
             String message = "Error while trying to save the process: " + e.getMessage();

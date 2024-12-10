@@ -71,7 +71,7 @@ public class NewspaperPage {
     public NewspaperPage(Path filePath) {
         this.filePath = filePath;
         fileName = filePath.getFileName().toString();
-        pageNumber = fileName.substring(11, 14);
+        pageNumber = fileName.substring(fileName.lastIndexOf("_") + 1, fileName.lastIndexOf("."));
 
         date = getDateFromFileName(fileName);
         localdate = LocalDate.parse(date);
@@ -149,7 +149,7 @@ public class NewspaperPage {
     }
 
     private boolean isPageNumberValid() {
-        return pageNumber.length() == 3 && NUMBER_PATTERN.matcher(pageNumber).find();
+        return NUMBER_PATTERN.matcher(pageNumber).find();
     }
 
     /**
