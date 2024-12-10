@@ -54,22 +54,26 @@ public class NewspaperPage {
     private String fileName;
     private LocalDate localdate;
     private String date;
+    private String dateAndType;
     private String year;
     private String month;
     private String day;
     private String pageNumber;
+    private boolean morningIssue = false;
+    private boolean eveningIssue = false;
 
     /**
      * Constructs a NewspaperPage object with the given file path.
      *
      * @param filePath The path to the newspaper page file.
      */
-    public NewspaperPage(Path filePath) {
+    public NewspaperPage(Path filePath, String morningIdentifier, String eveningIdentifier) {
         this.filePath = filePath;
         fileName = filePath.getFileName().toString();
         pageNumber = fileName.substring(fileName.lastIndexOf("_") + 1, fileName.lastIndexOf("."));
 
         date = getDateFromFileName(fileName);
+        dateAndType = date + "_1";
         localdate = LocalDate.parse(date);
 
         String[] dateParts = date.split("[\\W_]+");
@@ -77,6 +81,16 @@ public class NewspaperPage {
             year = dateParts[0];
             month = dateParts[1];
             day = dateParts[2];
+        }
+
+        // check if it is a morning or evening issue
+        if (StringUtils.isNotBlank(morningIdentifier) && fileName.contains(morningIdentifier)) {
+            morningIssue = true;
+            dateAndType = date + "_0";
+        }
+        if (StringUtils.isNotBlank(eveningIdentifier) && fileName.contains(eveningIdentifier)) {
+            eveningIssue = true;
+            dateAndType = date + "_2";
         }
     }
 

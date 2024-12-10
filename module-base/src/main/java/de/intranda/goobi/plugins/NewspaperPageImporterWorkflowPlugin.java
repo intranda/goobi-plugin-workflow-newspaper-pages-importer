@@ -124,12 +124,6 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     private Prefs prefs;
     private Fileformat fileformat;
 
-    private static final Comparator<NewspaperPage> byIssueDate = (NewspaperPage page1, NewspaperPage page2) -> {
-        String date1 = page1.getDate();
-        String date2 = page2.getDate();
-        return date1.compareTo(date2);
-    };
-
     @Override
     public PluginType getType() {
         return PluginType.Workflow;
@@ -270,7 +264,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                         if (!run) {
                             break;
                         }
-                        String issueDate = issueEntry.getKey();
+                        String issueDate = issueEntry.getKey().substring(0, issueEntry.getKey().indexOf("_"));
                         List<NewspaperPage> issuePages = issueEntry.getValue();
                         boolean success = tryUpdateOldProcessForIssue(process, issuePages);
                         if (!success) {
@@ -304,13 +298,34 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
         new Thread(runnable).start();
     }
 
+    /**
+     * get all Newspapers ordered by date and type
+     * 
+     * @param folder
+     * @return
+     */
     private List<NewspaperPage> getSortedNewspaperPages(String folder) {
         return storageProvider.listFiles(folder)
                 .stream()
-                .map(NewspaperPage::new)
-                .sorted(byIssueDate)
+                .map(fileName -> new NewspaperPage(fileName, morningIssueIdentifier, eveningIssueIdentifier))
+                .sorted(byMultipleFields)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * Comparator for NewspaperPages to get them sorted by date and then by morning, regular and evening
+     */
+    Comparator<NewspaperPage> byMultipleFields = Comparator
+            .comparing(NewspaperPage::getDate)
+            .thenComparing(page -> {
+                if (page.isMorningIssue()) {
+                    return 1; // morning issues
+                }
+                if (page.isEveningIssue()) {
+                    return 3; // evening issues
+                }
+                return 2; // general issues
+            });
 
     private boolean validateNewspaperPages(List<NewspaperPage> pages) {
         boolean result = true;
@@ -347,7 +362,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByDates(List<NewspaperPage> pages) {
         return pages
                 .stream()
-                .collect(Collectors.groupingBy(NewspaperPage::getDate, LinkedHashMap::new, Collectors.toList()));
+                .collect(Collectors.groupingBy(NewspaperPage::getDateAndType, LinkedHashMap::new, Collectors.toList()));
     }
 
     /**
@@ -704,6 +719,13 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             // TitleDocMain
             MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
             String titleValue = page.getUserFriendlyTitle(languageForDateFormat, issueTitlePrefix);
+            if (page.isMorningIssue()) {
+                titleValue = page.getUserFriendlyTitle(languageForDateFormat, issueTitlePrefixMorning);
+            }
+            if (page.isEveningIssue()) {
+                titleValue = page.getUserFriendlyTitle(languageForDateFormat, issueTitlePrefixEvening);
+            }
+
             Metadata titleMetadata = createMetadata(titleType, titleValue, false);
             issue.addMetadata(titleMetadata);
 
