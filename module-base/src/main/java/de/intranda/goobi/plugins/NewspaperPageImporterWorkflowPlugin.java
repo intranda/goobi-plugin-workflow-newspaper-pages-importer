@@ -95,9 +95,11 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     @Getter
     private int itemCurrent = 0;
     @Getter
-    int itemsTotal = 0;
+    private int itemsTotal = 0;
     @Getter
-    private transient Queue<LogMessage> logQueue = new CircularFifoQueue<>(48);
+    private int errors;
+    @Getter
+    private transient Queue<LogMessage> logQueue = new CircularFifoQueue<>(1000);
     // folder containing images to import
     private String importFolder;
     // name of the workflow template that shall be used
@@ -147,7 +149,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
      */
     private void readConfiguration() {
         updateLog("Start reading the configuration");
-
+        errors = 0;
         // read some main configuration
         XMLConfiguration config = ConfigPlugins.getPluginConfig(title);
         importFolder = config.getString("importFolder");
@@ -247,6 +249,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                         List<NewspaperPage> issuePages = issueEntry.getValue();
                         boolean success = tryUpdateOldProcessForIssue(process, issuePages);
                         if (!success) {
+                            errors++;
                             String message = "Failed to add issue for date " + issueDate;
                             reportError(message);
                         }
@@ -266,6 +269,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                 updateLog("Import completed.");
 
             } catch (InterruptedException | ReadException | IOException | SwapException | WriteException | PreferencesException e) {
+                errors++;
                 Helper.setFehlerMeldung("Error while trying to execute the import: " + e.getMessage());
                 log.error("Error while trying to execute the import", e);
                 updateLog("Error while trying to execute the import: " + e.getMessage(), 3);
@@ -341,6 +345,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
 
         } catch (ReadException | IOException | SwapException e1) {
             // read Fileformat error
+            errors++;
             String message = "Failed to read the fileformat.";
             reportError(message);
             e1.printStackTrace();
@@ -348,12 +353,14 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
 
         } catch (PreferencesException e) {
             // DigitalDocument error
+            errors++;
             String message = "Failed to get the digital document.";
             reportError(message);
             e.printStackTrace();
             return false;
 
         } catch (Exception e) {
+            errors++;
             log.debug("Unknown exception caught while updating process: " + process.getTitel());
             e.printStackTrace();
             return false;
@@ -365,6 +372,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             return true;
 
         } catch (IOException | SwapException | DAOException e) {
+            errors++;
             log.error("Error while trying to copy files into the media folder", e);
             String message = "Error while trying to copy files into the media folder: " + e.getMessage();
             reportError(message);
@@ -403,6 +411,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             }
 
         } catch (Exception e) {
+            errors++;
             log.debug("Exception caught while updating metadata of process: " + process.getTitel());
             e.printStackTrace();
         }
@@ -480,6 +489,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                 logical.addChild(volume);
 
             } catch (TypeNotAllowedAsChildException e) {
+                errors++;
                 String message = "Failed to add volume.";
                 reportError(message);
                 e.printStackTrace();
@@ -489,6 +499,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             return fileformat;
 
         } catch (PreferencesException | TypeNotAllowedForParentException | MetadataTypeNotAllowedException | IncompletePersonObjectException e) {
+            errors++;
             String message = "Error while preparing the Fileformat for the new process: " + e.getMessage();
             reportError(message);
             return null;
@@ -621,7 +632,8 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                     ds.addMetadata(md);
                 }
             } catch (MetadataTypeNotAllowedException e) {
-                String message = "MetadataType " + target + " is not allowed. Skipping...";
+                errors++;
+                String message = "MetadataType " + target + " is not allowed. Skipping ...";
                 reportError(message);
                 e.printStackTrace();
             }
@@ -688,6 +700,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             return issue;
 
         } catch (TypeNotAllowedForParentException | MetadataTypeNotAllowedException e) {
+            errors++;
             String message = "Failed to create a new issue for " + page.getDate();
             reportError(message);
             e.printStackTrace();
@@ -730,6 +743,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             dsPage.addContentFile(contentFileTiff);
 
         } catch (TypeNotAllowedForParentException | TypeNotAllowedAsChildException | MetadataTypeNotAllowedException e) {
+            errors++;
             String message = "Failed to add page '" + page.getFileName() + "' to issue.";
             reportError(message);
             e.printStackTrace();
@@ -807,6 +821,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             ProcessManager.saveProcess(process);
 
         } catch (DAOException e) {
+            errors++;
             String message = "Error while trying to save the process: " + e.getMessage();
             reportError(message);
             return null;

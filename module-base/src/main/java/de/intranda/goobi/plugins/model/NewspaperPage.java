@@ -37,6 +37,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
+import org.jfree.util.Log;
 
 import lombok.Getter;
 
@@ -121,6 +122,16 @@ public class NewspaperPage {
         boolean vdate = isDateValid();
         boolean vpage = isPageNumberValid();
         boolean vsize = isFileSizeValid();
+
+        if (!vdate) {
+            Log.error("Date is invalid");
+        }
+        if (!vpage) {
+            Log.error("Page number is invalid");
+        }
+        if (!vsize) {
+            Log.error("File size is invalid");
+        }
         return vdate && vpage && vsize;
     }
 
