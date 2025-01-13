@@ -15,7 +15,6 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.collections4.queue.CircularFifoQueue;
 import org.apache.commons.configuration.HierarchicalConfiguration;
-import org.apache.commons.configuration.XMLConfiguration;
 import org.apache.commons.lang3.StringUtils;
 import org.goobi.beans.Process;
 import org.goobi.beans.Step;
@@ -95,9 +94,11 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     @Getter
     private int itemCurrent = 0;
     @Getter
-    int itemsTotal = 0;
+    private int itemsTotal = 0;
     @Getter
-    private transient Queue<LogMessage> logQueue = new CircularFifoQueue<>(48);
+    private int errors;
+    @Getter
+    private transient Queue<LogMessage> logQueue = new CircularFifoQueue<>(1000);
     // folder containing images to import
     private String importFolder;
     // name of the workflow template that shall be used
@@ -108,19 +109,20 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     private String pageNumberPrefix;
     // issue title prefix
     private String issueTitlePrefix;
+    private String issueTitlePrefixMorning;
+    private String issueTitlePrefixEvening;
+    // identifiers to detect morning and evening issues
+    private String morningIssueIdentifier;
+    private String eveningIssueIdentifier;
     // language for ate for issueTitle
     private String languageForDateFormat;
     // true if the images should be deleted from the import folder once they are imported, false otherwise
     private boolean deleteFromSource;
+    @Getter
+    private List<String> sets;
 
     private Prefs prefs;
     private Fileformat fileformat;
-
-    private static final Comparator<NewspaperPage> byIssueDate = (NewspaperPage page1, NewspaperPage page2) -> {
-        String date1 = page1.getDate();
-        String date2 = page2.getDate();
-        return date1.compareTo(date2);
-    };
 
     @Override
     public PluginType getType() {
@@ -137,43 +139,61 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
      */
     public NewspaperPageImporterWorkflowPlugin() {
         log.info("Newspaper pages importer workflow plugin started");
+        errors = 0;
 
-        // read important configuration first
-        readConfiguration();
+        // read sets
+        sets = new ArrayList<String>();
+        List<HierarchicalConfiguration> configSets = ConfigPlugins.getPluginConfig(title).configurationsAt("set");
+        for (HierarchicalConfiguration config : configSets) {
+            sets.add(config.getString("[@title]", "-"));
+        }
     }
 
     /**
      * private method to read main configuration file
      */
-    private void readConfiguration() {
-        updateLog("Start reading the configuration");
+    private void readConfiguration(String set) {
+        updateLog("Reading configuration for set");
+        errors = 0;
 
-        // read some main configuration
-        XMLConfiguration config = ConfigPlugins.getPluginConfig(title);
-        importFolder = config.getString("importFolder");
-        workflow = config.getString("workflow");
-        processtitle = config.getString("processtitle");
-        pageNumberPrefix = config.getString("pageNumberPrefix");
-        issueTitlePrefix = config.getString("issueTitlePrefix");
-        languageForDateFormat = config.getString("languageForDateFormat", "de");
-        deleteFromSource = config.getBoolean("deleteFromSource", false);
+        // find the correct configuration block
+        List<HierarchicalConfiguration> configSets = ConfigPlugins.getPluginConfig(title).configurationsAt("set");
+        for (HierarchicalConfiguration config : configSets) {
 
-        anchorMetadataList = new ArrayList<>();
-        volumeMetadataList = new ArrayList<>();
-        List<HierarchicalConfiguration> mappings = config.configurationsAt("metadata");
-        for (HierarchicalConfiguration mapping : mappings) {
-            String type = mapping.getString("[@type]", "");
-            String value = mapping.getString("[@value]", "");
-            String variable = mapping.getString("[@var]", "");
-            boolean isPerson = mapping.getBoolean("[@person]", false);
-            boolean isAnchor = mapping.getBoolean("[@anchor]", false);
-            boolean isVolume = mapping.getBoolean("[@volume]", false);
-            ImportMetadata md = new ImportMetadata(type, value, variable, isPerson);
-            if (isAnchor) {
-                anchorMetadataList.add(md);
-            }
-            if (isVolume) {
-                volumeMetadataList.add(md);
+            // if the correct set was found read it in and start the export
+            if (config.getString("[@title]", "-").equals(set)) {
+                importFolder = config.getString("importFolder");
+                workflow = config.getString("workflow");
+                processtitle = config.getString("processtitle");
+                issueTitlePrefix = config.getString("issueTitlePrefix");
+                issueTitlePrefixMorning = config.getString("issueTitlePrefixMorning");
+                issueTitlePrefixEvening = config.getString("issueTitlePrefixEvening");
+                morningIssueIdentifier = config.getString("issueTitlePrefixMorning[@identifier]");
+                eveningIssueIdentifier = config.getString("issueTitlePrefixEvening[@identifier]");
+
+                pageNumberPrefix = config.getString("pageNumberPrefix");
+                languageForDateFormat = config.getString("languageForDateFormat", "de");
+                deleteFromSource = config.getBoolean("deleteFromSource", false);
+                anchorMetadataList = new ArrayList<>();
+                volumeMetadataList = new ArrayList<>();
+
+                // metadata mappings to use
+                List<HierarchicalConfiguration> mappings = config.configurationsAt("metadata");
+                for (HierarchicalConfiguration mapping : mappings) {
+                    String type = mapping.getString("[@type]", "");
+                    String value = mapping.getString("[@value]", "");
+                    String variable = mapping.getString("[@var]", "");
+                    boolean isPerson = mapping.getBoolean("[@person]", false);
+                    boolean isAnchor = mapping.getBoolean("[@anchor]", false);
+                    boolean isVolume = mapping.getBoolean("[@volume]", false);
+                    ImportMetadata md = new ImportMetadata(type, value, variable, isPerson);
+                    if (isAnchor) {
+                        anchorMetadataList.add(md);
+                    }
+                    if (isVolume) {
+                        volumeMetadataList.add(md);
+                    }
+                }
             }
         }
 
@@ -191,7 +211,8 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     /**
      * main method to start the actual import
      */
-    public void startImport() {
+    public void startImport(String set) {
+        readConfiguration(set);
         List<NewspaperPage> allPagesSorted = getSortedNewspaperPages(importFolder);
         boolean allPagesValid = validateNewspaperPages(allPagesSorted);
         if (!allPagesValid) {
@@ -243,10 +264,11 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                         if (!run) {
                             break;
                         }
-                        String issueDate = issueEntry.getKey();
+                        String issueDate = issueEntry.getKey().substring(0, issueEntry.getKey().indexOf("_"));
                         List<NewspaperPage> issuePages = issueEntry.getValue();
                         boolean success = tryUpdateOldProcessForIssue(process, issuePages);
                         if (!success) {
+                            errors++;
                             String message = "Failed to add issue for date " + issueDate;
                             reportError(message);
                         }
@@ -266,6 +288,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                 updateLog("Import completed.");
 
             } catch (InterruptedException | ReadException | IOException | SwapException | WriteException | PreferencesException e) {
+                errors++;
                 Helper.setFehlerMeldung("Error while trying to execute the import: " + e.getMessage());
                 log.error("Error while trying to execute the import", e);
                 updateLog("Error while trying to execute the import: " + e.getMessage(), 3);
@@ -275,37 +298,52 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
         new Thread(runnable).start();
     }
 
+    /**
+     * get all Newspapers ordered by date and type
+     * 
+     * @param folder
+     * @return
+     */
     private List<NewspaperPage> getSortedNewspaperPages(String folder) {
         return storageProvider.listFiles(folder)
                 .stream()
-                .map(NewspaperPage::new)
-                .sorted(byIssueDate)
+                .map(fileName -> new NewspaperPage(fileName, morningIssueIdentifier, eveningIssueIdentifier))
+                .sorted(byMultipleFields)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * Comparator for NewspaperPages to get them sorted by date and then by morning, regular and evening
+     */
+    Comparator<NewspaperPage> byMultipleFields = Comparator
+            .comparing(NewspaperPage::getDate)
+            .thenComparing(page -> {
+                if (page.isMorningIssue()) {
+                    return 1; // morning issues
+                }
+                if (page.isEveningIssue()) {
+                    return 3; // evening issues
+                }
+                return 2; // general issues
+            });
 
     private boolean validateNewspaperPages(List<NewspaperPage> pages) {
-        List<Path> invalidFilePaths = getInvalidFilePaths(pages);
-
-        if (!invalidFilePaths.isEmpty()) {
-            // print all invalid files
-            String message = "Invalid file detected: ";
-            for (Path path : invalidFilePaths) {
-                reportError(message + path);
+        boolean result = true;
+        for (NewspaperPage p : pages) {
+            if (!p.isDateValid()) {
+                reportError("Date is invalid for file: " + p.getFilePath());
+                result = false;
             }
-
-            return false;
+            if (!p.isPageNumberValid()) {
+                reportError("Page number is invalid for file: " + p.getFilePath());
+                result = false;
+            }
+            if (!p.isFileSizeValid()) {
+                reportError("File size is invalid for file: " + p.getFilePath());
+                result = false;
+            }
         }
-
-        return true;
-
-    }
-
-    private List<Path> getInvalidFilePaths(List<NewspaperPage> pages) {
-        return pages
-                .stream()
-                .filter(NewspaperPage::isFileInvalid)
-                .map(NewspaperPage::getFilePath)
-                .collect(Collectors.toList());
+        return result;
     }
 
     private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByYears(List<NewspaperPage> pages) {
@@ -324,7 +362,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     private Map<String, List<NewspaperPage>> getSortedNewspaperPagesGroupedByDates(List<NewspaperPage> pages) {
         return pages
                 .stream()
-                .collect(Collectors.groupingBy(NewspaperPage::getDate, LinkedHashMap::new, Collectors.toList()));
+                .collect(Collectors.groupingBy(NewspaperPage::getDateAndType, LinkedHashMap::new, Collectors.toList()));
     }
 
     /**
@@ -341,6 +379,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
 
         } catch (ReadException | IOException | SwapException e1) {
             // read Fileformat error
+            errors++;
             String message = "Failed to read the fileformat.";
             reportError(message);
             e1.printStackTrace();
@@ -348,12 +387,14 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
 
         } catch (PreferencesException e) {
             // DigitalDocument error
+            errors++;
             String message = "Failed to get the digital document.";
             reportError(message);
             e.printStackTrace();
             return false;
 
         } catch (Exception e) {
+            errors++;
             log.debug("Unknown exception caught while updating process: " + process.getTitel());
             e.printStackTrace();
             return false;
@@ -365,6 +406,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             return true;
 
         } catch (IOException | SwapException | DAOException e) {
+            errors++;
             log.error("Error while trying to copy files into the media folder", e);
             String message = "Error while trying to copy files into the media folder: " + e.getMessage();
             reportError(message);
@@ -403,6 +445,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             }
 
         } catch (Exception e) {
+            errors++;
             log.debug("Exception caught while updating metadata of process: " + process.getTitel());
             e.printStackTrace();
         }
@@ -480,6 +523,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                 logical.addChild(volume);
 
             } catch (TypeNotAllowedAsChildException e) {
+                errors++;
                 String message = "Failed to add volume.";
                 reportError(message);
                 e.printStackTrace();
@@ -489,6 +533,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             return fileformat;
 
         } catch (PreferencesException | TypeNotAllowedForParentException | MetadataTypeNotAllowedException | IncompletePersonObjectException e) {
+            errors++;
             String message = "Error while preparing the Fileformat for the new process: " + e.getMessage();
             reportError(message);
             return null;
@@ -621,7 +666,8 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
                     ds.addMetadata(md);
                 }
             } catch (MetadataTypeNotAllowedException e) {
-                String message = "MetadataType " + target + " is not allowed. Skipping...";
+                errors++;
+                String message = "MetadataType " + target + " is not allowed. Skipping ...";
                 reportError(message);
                 e.printStackTrace();
             }
@@ -673,6 +719,13 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             // TitleDocMain
             MetadataType titleType = prefs.getMetadataTypeByName(TITLE_DOC_MAIN_TYPE);
             String titleValue = page.getUserFriendlyTitle(languageForDateFormat, issueTitlePrefix);
+            if (page.isMorningIssue()) {
+                titleValue = page.getUserFriendlyTitle(languageForDateFormat, issueTitlePrefixMorning);
+            }
+            if (page.isEveningIssue()) {
+                titleValue = page.getUserFriendlyTitle(languageForDateFormat, issueTitlePrefixEvening);
+            }
+
             Metadata titleMetadata = createMetadata(titleType, titleValue, false);
             issue.addMetadata(titleMetadata);
 
@@ -688,6 +741,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             return issue;
 
         } catch (TypeNotAllowedForParentException | MetadataTypeNotAllowedException e) {
+            errors++;
             String message = "Failed to create a new issue for " + page.getDate();
             reportError(message);
             e.printStackTrace();
@@ -730,6 +784,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
             dsPage.addContentFile(contentFileTiff);
 
         } catch (TypeNotAllowedForParentException | TypeNotAllowedAsChildException | MetadataTypeNotAllowedException e) {
+            errors++;
             String message = "Failed to add page '" + page.getFileName() + "' to issue.";
             reportError(message);
             e.printStackTrace();
@@ -799,14 +854,10 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
         // save the process
         Process process = bhelp.createAndSaveNewProcess(template, processName, fileformat);
 
-        // add some properties
-        bhelp.EigenschaftHinzufuegen(process, "Template", template.getTitel());
-        bhelp.EigenschaftHinzufuegen(process, "TemplateID", "" + template.getId());
-
         try {
             ProcessManager.saveProcess(process);
-
         } catch (DAOException e) {
+            errors++;
             String message = "Error while trying to save the process: " + e.getMessage();
             reportError(message);
             return null;
