@@ -62,6 +62,8 @@ import ugh.fileformats.mets.MetsMods;
 @Log4j2
 public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPushPlugin {
 
+    private static final long serialVersionUID = -2140660105279731651L;
+
     private static final StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
     private static final String NEWSPAPER_TYPE = "Newspaper";
@@ -122,7 +124,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
     private List<String> sets;
 
     private Prefs prefs;
-    private Fileformat fileformat;
+    private transient Fileformat fileformat;
 
     @Override
     public PluginType getType() {
@@ -142,7 +144,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
         errors = 0;
 
         // read sets
-        sets = new ArrayList<String>();
+        sets = new ArrayList<>();
         List<HierarchicalConfiguration> configSets = ConfigPlugins.getPluginConfig(title).configurationsAt("set");
         for (HierarchicalConfiguration config : configSets) {
             sets.add(config.getString("[@title]", "-"));
@@ -904,6 +906,7 @@ public class NewspaperPageImporterWorkflowPlugin implements IWorkflowPlugin, IPu
      * 
      * @param process
      */
+    @SuppressWarnings("unused")
     private void startOpenAutomaticTasks(Process process) { // NOSONAR
         // start any open automatic tasks for the created process
         for (Step s : process.getSchritteList()) {
