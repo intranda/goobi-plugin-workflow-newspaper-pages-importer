@@ -3,6 +3,10 @@ title: Import of newspaper issues as single pages
 identifier: intranda_workflow_newspaper_pages_importer
 description: This workflow plugin allows a mass import of newspaper issues in the form of individual pages, in which the date, issue numbers and page numbers are transferred.
 published: true
+keywords:
+    - Goobi workflow
+    - Plugin
+    - Workflow Plugin
 ---
 
 ## Introduction
