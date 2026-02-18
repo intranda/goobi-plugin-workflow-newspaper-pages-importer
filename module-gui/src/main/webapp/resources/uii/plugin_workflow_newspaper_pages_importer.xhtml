@@ -10,7 +10,8 @@
     xmlns:p="http://primefaces.org/ui"
     xmlns:jsf="http://xmlns.jcp.org/jsf"
     xmlns:button="http://goobi.io/button"
-    xmlns:section="http://goobi.io/section">
+    xmlns:section="http://goobi.io/section"
+    xmlns:util="http://goobi.io/util">
         <style>
             .progress {
                 border: 1px solid #EFAD4E;
@@ -104,17 +105,12 @@
                                         data-bs-toggle="tooltip"
                                         title="#{msgs.plugin_intranda_workflow_startImport}">
                                         <button
-                                            class="btn btn-primary dropdown-toggle"
+                                            class="btn btn-primary dropdown-toggle d-inline-flex align-items-center gap-2"
                                             data-bs-toggle="dropdown"
                                             aria-haspopup="true"
                                             aria-expanded="false"
                                             type="button">
-                                            <span
-                                                aria-hidden="true"
-                                                class="fa fa-play-circle" />
-                                            <span>
-                                                #{msgs.plugin_intranda_workflow_startImport}
-                                            </span>
+                                            <util:icon-text icon="player-play" text="#{msgs.plugin_intranda_workflow_startImport}" />
                                         </button>
                                         <ul class="dropdown-menu">
                                             <ui:repeat
