@@ -48,13 +48,7 @@
         <h:panelGroup>
 			<div class="row">
 				<div class="col-sm-12">
-				    <h:panelGroup
-                    	rendered="#{!LoginForm.hasRole('Plugin_workflow_wu_wma_import')}"
-                    	layout="block">
-                    	<h:outputText
-                        	styleClass="alert alert-danger"
-                        	value="#{msgs.plugin_administration_missingPermission} Plugin_workflow_newspaper_pages_importer"/>
-                	</h:panelGroup>
+				    <util:missing-rights rights="Plugin_workflow_wu_wma_import" rendered="true" />
                 	<ui:fragment rendered="#{LoginForm.hasRole('Plugin_workflow_newspaper_pages_importer')}">
                     	<section:section type="neutral">
                         	<section:header
@@ -86,13 +80,11 @@
                                         </span>
                                     </div>
                                 </h:panelGroup>
-                                <ui:fragment rendered="#{NavigationForm.workflowPlugin.errors > 0}">
-                                    <div class="alert alert-danger mt-3" role="alert">
-                                      <div>
-                                        <h:outputText value="#{msgs.ProcessCreationError_mets_save_error} (#{msgs.count}: #{NavigationForm.workflowPlugin.errors})"/>
-                                      </div>
-                                    </div>
-                                </ui:fragment>
+                                <util:alert
+                                    type="danger"
+                                    styleClass="mt-3"
+                                    message="#{msgs.ProcessCreationError_mets_save_error} (#{msgs.count}: #{NavigationForm.workflowPlugin.errors})"
+                                    rendered="#{NavigationForm.workflowPlugin.errors > 0}" />
                                 
                                 <!-- // progress bar -->
                             </section:body>
