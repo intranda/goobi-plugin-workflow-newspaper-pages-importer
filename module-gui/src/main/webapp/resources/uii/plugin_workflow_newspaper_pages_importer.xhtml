@@ -36,7 +36,7 @@
                 color: #666666;
                 font-weight: bold;
              }
-             
+
              .logs {
                 border: 1px solid #ddd;
                 display: block;
@@ -44,23 +44,23 @@
                 padding: 5px;
             }
         </style>
-        
+
         <h:panelGroup>
 			<div class="row">
 				<div class="col-sm-12">
-				    <util:missing-rights rights="Plugin_workflow_wu_wma_import" rendered="true" />
+				    <util:missing-rights rights="Plugin_workflow_wu_wma_import" />
                 	<ui:fragment rendered="#{LoginForm.hasRole('Plugin_workflow_newspaper_pages_importer')}">
                     	<section:section type="neutral">
                         	<section:header
                             	icon="plug"
                             	title="#{msgs[NavigationForm.workflowPlugin.title]}" />
-				
+
 				 			<h:form
                             	id="myform"
                             	onkeypress="submitOnEnter(event);">
                             	<section:body padding="true">
-				
-							    
+
+
                                 <!-- <h:outputText
                                     value="#{msgs.plugin_intranda_workflow_kick_start_introduction}: #{NavigationForm.workflowPlugin.importFolder}"/> -->
                                 <h:panelGroup
@@ -85,7 +85,7 @@
                                     styleClass="mt-3"
                                     message="#{msgs.ProcessCreationError_mets_save_error} (#{msgs.count}: #{NavigationForm.workflowPlugin.errors})"
                                     rendered="#{NavigationForm.workflowPlugin.errors > 0}" />
-                                
+
                                 <!-- // progress bar -->
                             </section:body>
                             <section:footer>
@@ -135,7 +135,7 @@
                 		</ui:fragment>
 					</div>
 				</div>
-			
+
         </h:panelGroup>
 
         <!-- log view -->
@@ -150,7 +150,7 @@
             </h:panelGroup>
         </h:panelGroup>
         <!-- // log view -->
-        
+
         <!-- websocket communication -->
         <o:socket channel="workflowPluginPush" scope="session">
             <f:ajax event="update" render="myform" />
